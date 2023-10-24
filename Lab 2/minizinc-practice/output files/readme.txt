@@ -1,0 +1,1 @@
+We are providing you with possible solutions for each instance (.dzn) file. You can use these for debugging, e.g., check that your objective function value matches the values given here, and use the solutions to debug your models.
