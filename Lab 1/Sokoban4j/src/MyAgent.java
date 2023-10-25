@@ -59,6 +59,12 @@ public class MyAgent extends ArtificialAgent {
         Node curr = null;
 
         boolean[][] deadSquares = DeadSquareDetector.detectSimple(this.board);
+//        System.out.println("dead squares: \n");
+//        for (int y = 0 ; y < board.height() ; ++y) {
+//            for (int x = 0 ; x < board.width() ; ++x)
+//                System.out.print(CTile.isWall(board.tile(x, y)) ? '#' : (deadSquares[x][y] ? 'X' : '_'));
+//            System.out.println();
+//        }
         while (!q.isEmpty()) {
             curr = q.poll();
             searchedNodes++;
@@ -104,7 +110,7 @@ public class MyAgent extends ArtificialAgent {
             curr = curr.parent;
         }
         // Print path
-        // System.out.println(actions.stream().map(o -> o.toString().substring(0, 1)).collect(Collectors.joining()));
+//        System.out.println(actions.stream().map(o -> o.toString().substring(0, 1)).collect(Collectors.joining()));
         return actions;
     }
 
