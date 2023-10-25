@@ -68,8 +68,8 @@ public class MyAgent extends ArtificialAgent {
             List<CAction> actions = new ArrayList<>(4);
             // Add possible moves and pushes
             for (CMove move : CMove.getActions())
-                if (move.isPossible(curr.s.board) &&
-                        !move.getDirection().equals(move.getDirection().opposite())) actions.add(move);
+                if (move.isPossible(curr.s.board) && (!(curr.pa instanceof CMove) ||
+                        !move.getDirection().equals(curr.pa.getDirection().opposite()))) actions.add(move);
             for (CPush push : CPush.getActions()) if (push.isPossible(curr.s.board)) actions.add(push);
             for (CAction action : actions) {
                 Config next = curr.s.clone();
