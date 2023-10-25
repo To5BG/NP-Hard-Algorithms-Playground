@@ -1,6 +1,7 @@
 import static java.lang.System.out;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
@@ -54,7 +55,7 @@ public class MyAgent extends ArtificialAgent {
 
         dist.put(this.board, 0.0);
         q.add(new Node(conf, null, null, 0.0, h(conf, null,
-                conf.boxes.stream().map(b -> (double) b.dist).reduce(0.0, Double::sum))));
+                Arrays.stream(conf.boxes).map(b -> (double) b.dist).reduce(0.0, Double::sum))));
         Node curr = null;
 
         boolean[][] deadSquares = DeadSquareDetector.detectSimple(this.board);
@@ -92,7 +93,7 @@ public class MyAgent extends ArtificialAgent {
                 double newCost = curr.g + action.getSteps();
                 // Don't consider if it does not improve on previous distance or if it leads to an unsolvable position
                 if (newCost + curr.h >= dist.getOrDefault(next.board, Double.MAX_VALUE) || (action instanceof CPush &&
-                        next.boxes.stream().anyMatch(b -> deadSquares[b.x][b.y]))) continue;
+                        Arrays.stream(next.boxes).anyMatch(b -> deadSquares[b.x][b.y]))) continue;
                 dist.put(next.board, newCost);
                 Node newState = new Node(next, curr, action, newCost, h(next, movedBox, curr.h));
                 q.add(newState);
@@ -115,13 +116,13 @@ public class MyAgent extends ArtificialAgent {
         // If box was moved, update boxes-to-goals minDist
         if (changed != null) {
             double res = oldH - changed.dist;
-            changed.dist = (byte) (b.goals.stream().map(goal -> Math.abs(changed.x - goal.x) +
+            changed.dist = (byte) (Arrays.stream(b.goals).map(goal -> Math.abs(changed.x - goal.x) +
                     Math.abs(changed.y - goal.y)).reduce(Integer.MAX_VALUE, Math::min).intValue());
             return res + changed.dist;
         }
         // If player moved, update player-to-box minDist
         double res = oldH - b.playerDist;
-        b.playerDist = (byte) (b.boxes.stream().map(box ->
+        b.playerDist = (byte) (Arrays.stream(b.boxes).map(box ->
                         Math.abs(box.x - b.board.playerX) + Math.abs(box.y - b.board.playerY))
                 .reduce(0, Integer::min) - 1);
         return res + b.playerDist;
@@ -173,12 +174,12 @@ public class MyAgent extends ArtificialAgent {
     }
 
     static class Config implements Cloneable {
-        List<Point> boxes;
-        List<Point> goals;
+        Point[] boxes;
+        Point[] goals;
         BoardCompact board;
         byte playerDist;
 
-        public Config(List<Point> boxes, List<Point> goals, BoardCompact board, byte playerDist) {
+        public Config(Point[] boxes, Point[] goals, BoardCompact board, byte playerDist) {
             this.boxes = boxes;
             this.goals = goals;
             this.board = board;
@@ -200,20 +201,26 @@ public class MyAgent extends ArtificialAgent {
             }
             byte pdist = (byte) (boxes.stream().map(box -> Math.abs(box.x - b.playerX) + Math.abs(box.y - b.playerY))
                     .reduce(Integer.MAX_VALUE, Math::min) - 1);
-            return new Config(boxes, goals, b, pdist);
+            return new Config(boxes.toArray(Point[]::new), goals.toArray(Point[]::new), b, pdist);
         }
 
         public Config clone() {
-            List<Point> newBoxes = new ArrayList<>(boxes.size());
-            for (Point box : boxes) newBoxes.add(new Point(box.x, box.y, box.dist));
-            List<Point> newGoals = new ArrayList<>(goals.size());
-            for (Point goal : goals) newGoals.add(new Point(goal.x, goal.y, goal.dist));
+            Point[] newBoxes = new Point[boxes.length];
+            for (int i = 0; i < boxes.length; i++) {
+                Point box = boxes[i];
+                newBoxes[i] = new Point(box.x, box.y, box.dist);
+            };
+            Point[] newGoals = new Point[goals.length];
+            for (int i = 0; i < goals.length; i++) {
+                Point goal = goals[i];
+                newGoals[i] = new Point(goal.x, goal.y, goal.dist);
+            }
             return new Config(newBoxes, newGoals, board.clone(), playerDist);
         }
 
         public Point moveBox(byte x, byte y, byte tx, byte ty) {
             board.moveBox(x, y, tx, ty);
-            Point box = boxes.stream().filter(b -> b.x == x && b.y == y).findFirst().orElseThrow();
+            Point box = Arrays.stream(boxes).filter(b -> b.x == x && b.y == y).findFirst().orElseThrow();
             box.x = tx;
             box.y = ty;
             return box;
