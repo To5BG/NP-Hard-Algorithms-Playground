@@ -2,6 +2,8 @@ import java.io.File;
 
 import game.board.compact.*;
 import game.board.oop.*;
+import game.board.slim.BoardSlim;
+import game.board.slim.STile;
 
 public class DeadSquareTest {
     static void printLevelWithTargets(Board board) {
@@ -40,12 +42,12 @@ public class DeadSquareTest {
 
             BoardCompact bc = board.makeBoardCompact();
 
-            boolean[][] dead = MyAgent.DeadSquareDetector.detect(bc);
+            boolean[][] dead = MyAgent.DeadSquareDetector.detectSimple(bc);
             
             System.out.println("dead squares: \n");
             for (int y = 0 ; y < bc.height() ; ++y) {
                 for (int x = 0 ; x < bc.width() ; ++x)
-                    System.out.print(CTile.isWall(bc.tile(x, y)) ? '#' : (dead[x][y] ? 'X' : '_'));
+                    System.out.print((STile.WALL_FLAG & bc.tile(x, y)) != 0 ? '#' : (dead[x][y] ? 'X' : '_'));
                 System.out.println();
             }
             System.out.println();

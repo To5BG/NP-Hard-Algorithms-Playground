@@ -7,15 +7,15 @@ import java.util.List;
 import java.util.Map;
 import java.util.PriorityQueue;
 import java.util.Queue;
-import java.util.stream.Collectors;
 
 import agents.ArtificialAgent;
 import game.actions.EDirection;
 import game.actions.compact.*;
 import game.board.compact.BoardCompact;
-import game.board.oop.ESpace;
 import game.board.oop.EEntity;
 import game.board.oop.EPlace;
+import game.board.slim.BoardSlim;
+import game.board.slim.STile;
 
 
 /**
@@ -57,7 +57,7 @@ public class MyAgent extends ArtificialAgent {
                 conf.boxes.stream().map(b -> (double) b.dist).reduce(0.0, Double::sum))));
         Node curr = null;
 
-        boolean[][] deadSquares = DeadSquareDetector.detect(this.board);
+        boolean[][] deadSquares = DeadSquareDetector.detectSimple(this.board);
         while (!q.isEmpty()) {
             curr = q.poll();
             searchedNodes++;
@@ -225,57 +225,24 @@ public class MyAgent extends ArtificialAgent {
     }
 
     static class DeadSquareDetector {
-        public static boolean[][] detect(BoardCompact board) {
+        public static boolean[][] detectSimple(BoardCompact board) {
             Config conf = Config.buildConfig(board);
             boolean[][] res = new boolean[board.width()][board.height()];
             // Flood fill for dead squares, starting from each goal
-            for (Point goal : conf.goals) floodFill(board, res, goal.x, goal.y);
-            // Flip boolean matrix (non-visited cannot be reached)
-            for (int i = 1; i < board.width() - 1; i++) for (int j = 1; j < board.height() - 1; j++) res[i][j] ^= true;
-            // Fill in entries to dead zones (2 dead squares and a wall)
-            for (int i = 1; i < board.width() - 1; i++)
-                for (int j = 1; j < board.height() - 1; j++)
-                    if (!res[i][j] && !ESpace.WALL.isSpace(board.tiles[i][j]) &&
-                            (EPlace.SOME_BOX_PLACE_FLAG & board.tiles[i][j]) == 0) {
-                        byte[] dirs = new byte[]{1, 0, -1, 0};
-                        // 4 bit flag for dead squares and walls on each cardinal directions
-                        byte dead = 0, walls = 0;
-                        for (int k = 0; k < 4; k++) {
-                            walls |= (ESpace.WALL.isSpace(board.tiles[i + dirs[k]][j + dirs[(k + 1) % 4]])
-                                    ? 1 : 0) << k;
-                            dead |= ((res[i + dirs[k]][j + dirs[(k + 1) % 4]]) ? 1 : 0) << k;
-                        }
-                        // 2 dead squares in opposite directions and a wall perpendicular on them =>
-                        // _#_    or     x_x      or  transpose of these two
-                        // x_x           _#_
-                        if ((((10 & dead) == 10) && ((5 & walls) != 0)) ||
-                                (((5 & dead) == 5) && ((10 & walls) != 0))) {
-                            res[i][j] = true;
-                            break;
-                        }
-                    }
+            for (Point goal : conf.goals) pull(board.makeBoardSlim(), res, goal.x, goal.y);
+            for (int i = 0; i < board.width(); i++) for (int j = 0; j < board.height(); j++) res[i][j] ^= true;
             return res;
         }
 
-        public static void floodFill(BoardCompact board, boolean[][] res, byte i, byte j) {
-            Queue<Point> q = new PriorityQueue<>();
-            byte[] dirs = new byte[]{1, 0, -1, 0};
-            q.add(new Point(i, j, (byte) 0));
-            while (!q.isEmpty()) {
-                Point curr = q.poll();
-                byte walls = 0;
-                for (byte k = 0; k < 4; k++) walls |=
-                        (ESpace.WALL.isSpace(board.tiles[curr.x + dirs[k]][curr.y + dirs[(k + 1) % 4]]) ? 1 : 0) << k;
-                if (curr.x != i && curr.y != j &&
-                        ((3 & walls) == 3 || (6 & walls) == 6 || (9 & walls) == 9 || (12 & walls) == 12)) continue;
-                res[curr.x][curr.y] = true;
-                for (byte k = 0; k < 4; k++) {
-                    int tx = curr.x + dirs[k];
-                    int ty = curr.y + dirs[(k + 1) % 4];
-                    boolean blocked = ((walls & (1 << k)) != 0) ||
-                            ESpace.WALL.isSpace(board.tiles[2 * tx - curr.x][2 * ty - curr.y]);
-                    if (!blocked && !res[tx][ty]) q.add(new Point((byte) tx, (byte) ty, (byte) 0));
-                }
+        public static void pull(BoardSlim board, boolean[][] res, int x, int y) {
+            res[x][y] = true;
+            int[] dirs = {0, 1, 0, -1};
+            for (int i = 0; i < 4; i++) {
+                int nx = x + dirs[i], ny = y + dirs[(i + 1) % 4];
+                if (nx < 1 || ny < 1 || nx > res.length - 2 || ny > res[0].length - 2) continue;
+                if (res[nx][ny] || (board.tiles[nx][ny] & STile.WALL_FLAG) != 0 ||
+                        (board.tiles[nx + dirs[i]][ny + dirs[(i + 1) % 4]] & STile.WALL_FLAG) != 0) continue;
+                pull(board, res, nx, ny);
             }
         }
     }
