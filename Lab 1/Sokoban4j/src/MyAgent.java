@@ -2,12 +2,15 @@ import static java.lang.System.out;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.PriorityQueue;
 import java.util.Queue;
+import java.util.Set;
 
 import agents.ArtificialAgent;
 import game.actions.EDirection;
@@ -27,15 +30,19 @@ import game.board.slim.STile;
 public class MyAgent extends ArtificialAgent {
 
     protected BoardSlim board;
+
     protected int searchedNodes;
 
     protected List<Point> goals;
+
+    protected int[] dirs;
 
     @Override
     protected List<EDirection> think(BoardCompact board) {
         this.board = board.makeBoardSlim();
         searchedNodes = 0;
         this.goals = findGoals(this.board);
+        this.dirs = new int[]{-1,0,1,0};
 
         long searchStartMillis = System.currentTimeMillis();
         List<EDirection> result = a_star(500); // depth of search tree
@@ -53,17 +60,16 @@ public class MyAgent extends ArtificialAgent {
         // Initialize
         Map<Node, Integer> dist = new HashMap<>();
         Queue<Node> q = new PriorityQueue<>();
-        List<Point> boxes = findBoxes(board, goals);
-        Node start = new Node(boxes.toArray(Point[]::new), board, null, null, 0,
-                h(null, boxes.stream().map(b -> b.dist).reduce(0, Integer::sum)));
+        Point[] boxes = findBoxes(board);
+        Node start = new Node(boxes, board, null, null, 0, greedyMatching(boxes, goals));
         dist.put(start, 0);
         q.add(start);
 
         boolean[][] deadSquares = DeadSquareDetector.detectSimple(this.board);
 //        System.out.println("dead squares: \n");
-//        for (int y = 0 ; y < board.height() ; ++y) {
-//            for (int x = 0 ; x < board.width() ; ++x)
-//                System.out.print(CTile.isWall(board.tile(x, y)) ? '#' : (deadSquares[x][y] ? 'X' : '_'));
+//        for (int y = 0 ; y < this.board.height() ; ++y) {
+//            for (int x = 0 ; x < this.board.width() ; ++x)
+//                System.out.print((STile.WALL_FLAG & this.board.tile(x, y)) != 0 ? '#' : (deadSquares[x][y] ? 'X' : '_'));
 //            System.out.println();
 //        }
         // A*
@@ -96,7 +102,7 @@ public class MyAgent extends ArtificialAgent {
                         Arrays.stream(next.boxes).anyMatch(b -> deadSquares[b.x][b.y]))) continue;
                 dist.put(next, newCost);
                 // Update next state
-                next.parent = curr; next.pa = action; next.g = newCost; next.h = h(movedBox, curr.h);
+                next.parent = curr; next.pa = action; next.g = newCost; next.h = h(boxes, goals, movedBox, curr.h);
                 q.add(next);
             }
         }
@@ -113,13 +119,17 @@ public class MyAgent extends ArtificialAgent {
 
     // Heuristic function
     // This case - Manhattan distance of each box to its closest goal
-    public int h(Point changed, int oldH) {
+    public int h(Point[] boxes, List<Point> goals, Point changed, int oldH) {
+        // If boxes did not change, or moved box is closer to previous best, do not update
         if (changed == null) return oldH;
-        // If box was moved, update boxes-to-goals minDist
-        int res = oldH - changed.dist;
-        changed.dist = goals.stream().map(goal -> Math.abs(changed.x - goal.x) +
-                Math.abs(changed.y - goal.y)).reduce(Integer.MAX_VALUE, Math::min);
-        return res + changed.dist;
+        Point bestGoal = goals.get(changed.closestGoalId);
+        int newDist = Math.abs(bestGoal.x - changed.x) + Math.abs(bestGoal.y - changed.y);
+        if (changed.dist >= newDist) {
+            int res = oldH - changed.dist;
+            changed.dist = newDist;
+            return res + changed.dist;
+        }
+        else return greedyMatching(boxes, goals);
     }
 
     static class Node implements Comparable<Node>, Cloneable {
@@ -143,7 +153,7 @@ public class MyAgent extends ArtificialAgent {
             Point[] newBoxes = new Point[boxes.length];
             for (int i = 0; i < boxes.length; i++) {
                 Point box = boxes[i];
-                newBoxes[i] = new Point(box.x, box.y, box.dist);
+                newBoxes[i] = new Point(box.x, box.y, box.dist, box.closestGoalId);
             }
             return new Node(newBoxes, board.clone(), parent, pa, g, h);
         }
@@ -185,12 +195,13 @@ public class MyAgent extends ArtificialAgent {
     }
 
     static class Point implements Comparable<Point> {
-        int x, y, dist;
+        int x, y, dist, closestGoalId;
 
-        public Point(int x, int y, int dist) {
+        public Point(int x, int y, int dist, int closestGoalId) {
             this.x = x;
             this.y = y;
             this.dist = dist;
+            this.closestGoalId = closestGoalId;
         }
 
         public int compareTo(Point o) {
@@ -202,40 +213,57 @@ public class MyAgent extends ArtificialAgent {
         public static boolean[][] detectSimple(BoardSlim board) {
             boolean[][] res = new boolean[board.width()][board.height()];
             // Flood fill for dead squares, starting from each goal
-            for (Point goal : findGoals(board)) pull(board, res, goal.x, goal.y);
+            for (Point goal : findGoals(board)) pull(board, res, goal.x, goal.y, new int[]{0, 1, 0, -1});
             for (int i = 0; i < board.width(); i++) for (int j = 0; j < board.height(); j++) res[i][j] ^= true;
             return res;
         }
 
-        public static void pull(BoardSlim board, boolean[][] res, int x, int y) {
+        public static void pull(BoardSlim board, boolean[][] res, int x, int y, int[] dirs) {
             res[x][y] = true;
-            int[] dirs = {0, 1, 0, -1};
             for (int i = 0; i < 4; i++) {
                 int nx = x + dirs[i], ny = y + dirs[(i + 1) % 4];
                 if (nx < 1 || ny < 1 || nx > res.length - 2 || ny > res[0].length - 2) continue;
                 if (res[nx][ny] || (board.tiles[nx][ny] & STile.WALL_FLAG) != 0 ||
                         (board.tiles[nx + dirs[i]][ny + dirs[(i + 1) % 4]] & STile.WALL_FLAG) != 0) continue;
-                pull(board, res, nx, ny);
+                pull(board, res, nx, ny, dirs);
             }
         }
     }
 
-    static List<Point> findGoals(BoardSlim board) {
-        List<Point> res = new ArrayList<>();
-        for (int i = 1; i < board.width() - 1; i++) for (int j = 1; j < board.height() - 1; j++)
-            if ((STile.PLACE_FLAG & board.tiles[i][j]) != 0) res.add(new Point(i, j, 0));
+    static int greedyMatching(Point[] boxes, List<Point> goals) {
+        Queue<Point> pq = new PriorityQueue<>(Comparator.comparing(a -> a.dist));
+        for (int i = 0; i < boxes.length; i++) for (Point g : goals) {
+            Point b = boxes[i];
+            pq.add(new Point(i, g.closestGoalId, Math.abs(b.x - g.x) + Math.abs(b.y - g.y), -1));
+        }
+        Set<Integer> matchedBoxes = new HashSet<>(), matchedGoals = new HashSet<>();
+        int res = 0;
+        while (!pq.isEmpty()) {
+            Point curr = pq.poll();
+            if (matchedBoxes.contains(curr.x) || matchedGoals.contains(curr.y)) continue;
+            res += curr.dist;
+            boxes[curr.x].dist = curr.dist;
+            boxes[curr.x].closestGoalId = curr.y;
+            matchedBoxes.add(curr.x);
+            matchedGoals.add(curr.y);
+        }
+        if (matchedGoals.size() != goals.size()) throw new RuntimeException();
         return res;
     }
 
-    static List<Point> findBoxes(BoardSlim board, List<Point> goals) {
+    static List<Point> findGoals(BoardSlim board) {
+        List<Point> res = new ArrayList<>();
+        int id = 0;
+        for (int i = 1; i < board.width() - 1; i++) for (int j = 1; j < board.height() - 1; j++)
+            if ((STile.PLACE_FLAG & board.tiles[i][j]) != 0) res.add(new Point(i, j, -1, id++));
+        return res;
+    }
+
+    static Point[] findBoxes(BoardSlim board) {
         List<Point> res = new ArrayList<>();
         for (int i = 1; i < board.width() - 1; i++) for (int j = 1; j < board.height() - 1; j++)
-            if ((STile.BOX_FLAG & board.tiles[i][j]) != 0) res.add(new Point(i, j, -1));
-        for (Point box : res) {
-            box.dist = goals.stream().map(goal -> Math.abs(box.x - goal.x) + Math.abs(box.y - goal.y))
-                    .reduce(Integer.MAX_VALUE, Math::min);
-        }
+            if ((STile.BOX_FLAG & board.tiles[i][j]) != 0) res.add(new Point(i, j, -1, -1));
         res.sort((l, r) -> l.x == r.x ? r.y - l.y : r.x - l.x);
-        return res;
+        return res.toArray(Point[]::new);
     }
 }
