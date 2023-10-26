@@ -4,13 +4,11 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.PriorityQueue;
 import java.util.Queue;
-import java.util.Set;
 
 import agents.ArtificialAgent;
 import game.actions.EDirection;
@@ -60,7 +58,7 @@ public class MyAgent extends ArtificialAgent {
         // Initialize
         Map<Node, Integer> dist = new HashMap<>();
         Queue<Node> q = new PriorityQueue<>();
-        Point[] boxes = findBoxes(board);
+        BoxPoint[] boxes = findBoxes(board);
         Node start = new Node(boxes, board, null, null, 0, greedyMatching(boxes, goals));
         dist.put(start, 0);
         q.add(start);
@@ -92,7 +90,7 @@ public class MyAgent extends ArtificialAgent {
                 Node next = curr.clone();
                 EDirection dir = action.getDirection();
                 byte nextX = (byte) (next.board.playerX + dir.dX), nextY = (byte) (next.board.playerY + dir.dY);
-                Point movedBox = null;
+                BoxPoint movedBox = null;
                 // Move player and, if push action, the box
                 if (action instanceof SPush) movedBox = next.moveBox(nextX, nextY, nextX + dir.dX, nextY + dir.dY);
                 next.board.movePlayer(next.board.playerX, next.board.playerY, nextX, nextY);
@@ -118,29 +116,34 @@ public class MyAgent extends ArtificialAgent {
     }
     // Heuristic function
     // This case - Manhattan distance of each box to its closest goal
-    public int h(Point[] boxes, List<Point> goals, Point changed, int oldH) {
+    public int h(BoxPoint[] boxes, List<Point> goals, BoxPoint changed, int oldH) {
         // If boxes did not change, do not update
         if (changed == null) return oldH;
-        Point bestGoal = goals.get(changed.closestGoalId);
-        int newDist = Math.abs(bestGoal.x - changed.x) + Math.abs(bestGoal.y - changed.y);
-        // If moved box is closer to previous best, do not update
-        if (changed.dist >= newDist) {
-            int res = oldH - changed.dist;
-            changed.dist = newDist;
-            return res + changed.dist;
-        }
-        // else match again
-        else return greedyMatching(boxes, goals);
+
+        // greedy matching
+        // If distance to best goal gets large, update matching
+        // Point bestGoal = goals.get(changed.closestGoalId);
+        //int newDist = Math.abs(bestGoal.x - changed.x) + Math.abs(bestGoal.y - changed.y);
+        //for (BoxPoint b : boxes) if (b.dist < newDist) return greedyMatching(boxes, goals);
+
+        // closest matching
+        // update the closest matching
+        int newDist = goals.stream().map(g -> Math.abs(changed.x - g.x) + Math.abs(changed.y - g.y))
+                .reduce(0, Integer::min);
+
+        int res = oldH - changed.dist;
+        changed.dist = newDist;
+        return res + changed.dist;
     }
     // State
     static class Node implements Comparable<Node>, Cloneable {
-        Point[] boxes;
+        BoxPoint[] boxes;
         BoardSlim board;
         Node parent;
         SAction pa;
         int g, h, hash;
 
-        public Node(Point[] boxes, BoardSlim board, Node parent, SAction pa, int g, int h) {
+        public Node(BoxPoint[] boxes, BoardSlim board, Node parent, SAction pa, int g, int h) {
             this.boxes = boxes;
             this.board = board;
             this.parent = parent;
@@ -151,18 +154,18 @@ public class MyAgent extends ArtificialAgent {
         }
 
         public Node clone() {
-            Point[] newBoxes = new Point[boxes.length];
+            BoxPoint[] newBoxes = new BoxPoint[boxes.length];
             for (int i = 0; i < boxes.length; i++) {
-                Point box = boxes[i];
-                newBoxes[i] = new Point(box.x, box.y, box.dist, box.closestGoalId);
+                BoxPoint box = boxes[i];
+                newBoxes[i] = new BoxPoint(box.x, box.y, box.dist, box.closestGoalId);
             }
             return new Node(newBoxes, board.clone(), parent, pa, g, h);
         }
 
-        public Point moveBox(int x, int y, int tx, int ty) {
+        public BoxPoint moveBox(int x, int y, int tx, int ty) {
             board.moveBox((byte) x, (byte) y, (byte) tx, (byte) ty);
-            Point box = null;
-            for (Point b : boxes) if (b.x == x && b.y == y) {
+            BoxPoint box = null;
+            for (BoxPoint b : boxes) if (b.x == x && b.y == y) {
                 box = b;
                 box.x = tx;
                 box.y = ty;
@@ -194,17 +197,23 @@ public class MyAgent extends ArtificialAgent {
                     ((pa == null) ? "[null]" : pa.toString()) + g + " " + h + ">";
         }
     }
-    // Point record with two extra variables for boxes (id of closest goal, and distance to it)
-    static class Point implements Comparable<Point> {
-        int x, y, dist, closestGoalId;
+    // Box point extension with two extra variables (id of closest goal, and distance to it)
+    static class BoxPoint extends Point {
+        int dist, closestGoalId;
 
-        public Point(int x, int y, int dist, int closestGoalId) {
-            this.x = x;
-            this.y = y;
+        public BoxPoint(int x, int y, int dist, int closestGoalId) {
+            super(x, y);
             this.dist = dist;
             this.closestGoalId = closestGoalId;
         }
-
+    }
+    // Point record
+    static class Point implements Comparable<Point> {
+        int x, y;
+        public Point(int x, int y) {
+            this.x = x;
+            this.y = y;
+        }
         public int compareTo(Point o) {
             return Integer.compare(this.hashCode(), o.hashCode());
         }
@@ -232,24 +241,22 @@ public class MyAgent extends ArtificialAgent {
     }
     // Helper that matches each box to its closest goal, taking other matches into account
     // Returns heuristic (sum of Manhattan distances of matches)
-    static int greedyMatching(Point[] boxes, List<Point> goals) {
-        Queue<Point> pq = new PriorityQueue<>(Comparator.comparing(a -> a.dist));
-        for (int i = 0; i < boxes.length; i++) for (Point g : goals) {
-            Point b = boxes[i];
-            pq.add(new Point(i, g.closestGoalId, Math.abs(b.x - g.x) + Math.abs(b.y - g.y), -1));
+    static int greedyMatching(BoxPoint[] boxes, List<Point> goals) {
+        Queue<BoxPoint> pq = new PriorityQueue<>(Comparator.comparing(a -> a.dist));
+        for (int i = 0; i < boxes.length; i++) for (int j = 0; j < goals.size(); j++) {
+            BoxPoint b = boxes[i]; Point g = goals.get(j);
+            pq.add(new BoxPoint(i, j, Math.abs(b.x - g.x) + Math.abs(b.y - g.y), -1));
         }
-        Set<Integer> matchedBoxes = new HashSet<>(), matchedGoals = new HashSet<>();
-        int res = 0;
+        int matchedBoxes = 0, matchedGoals = 0, res = 0;
         while (!pq.isEmpty()) {
-            Point curr = pq.poll();
-            if (matchedBoxes.contains(curr.x) || matchedGoals.contains(curr.y)) continue;
+            BoxPoint curr = pq.poll();
+            if (((matchedBoxes & (1 << curr.x)) != 0) || ((matchedGoals & (1 << curr.y)) != 0)) continue;
             res += curr.dist;
             boxes[curr.x].dist = curr.dist;
             boxes[curr.x].closestGoalId = curr.y;
-            matchedBoxes.add(curr.x);
-            matchedGoals.add(curr.y);
+            matchedBoxes |= 1 << curr.x;
+            matchedGoals |= 1 << curr.y;
         }
-        if (matchedGoals.size() != goals.size()) throw new RuntimeException();
         return res;
     }
     // Helper for finding all goals in a board
@@ -257,15 +264,15 @@ public class MyAgent extends ArtificialAgent {
         List<Point> res = new ArrayList<>();
         int id = 0;
         for (int i = 1; i < board.width() - 1; i++) for (int j = 1; j < board.height() - 1; j++)
-            if ((STile.PLACE_FLAG & board.tiles[i][j]) != 0) res.add(new Point(i, j, -1, id++));
+            if ((STile.PLACE_FLAG & board.tiles[i][j]) != 0) res.add(new Point(i, j));
         return res;
     }
     // Helper for finding all boxes in a board
-    static Point[] findBoxes(BoardSlim board) {
-        List<Point> res = new ArrayList<>();
+    static BoxPoint[] findBoxes(BoardSlim board) {
+        List<BoxPoint> res = new ArrayList<>();
         for (int i = 1; i < board.width() - 1; i++) for (int j = 1; j < board.height() - 1; j++)
-            if ((STile.BOX_FLAG & board.tiles[i][j]) != 0) res.add(new Point(i, j, -1, -1));
+            if ((STile.BOX_FLAG & board.tiles[i][j]) != 0) res.add(new BoxPoint(i, j, -1, -1));
         res.sort((l, r) -> l.x == r.x ? r.y - l.y : r.x - l.x);
-        return res.toArray(Point[]::new);
+        return res.toArray(BoxPoint[]::new);
     }
 }
