@@ -40,7 +40,7 @@ public class DeadSquareTest {
             printLevelWithTargets(board);
             System.out.println();
 
-            BoardCompact bc = board.makeBoardCompact();
+            BoardSlim bc = board.makeBoardCompact().makeBoardSlim();
 
             boolean[][] dead = MyAgent.DeadSquareDetector.detectSimple(bc);
             
