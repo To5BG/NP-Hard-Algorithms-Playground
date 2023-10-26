@@ -28,14 +28,16 @@ public class MyAgent extends ArtificialAgent {
     protected BoardCompact board;
     protected int searchedNodes;
 
+    protected List<Point> goals;
+
     @Override
     protected List<EDirection> think(BoardCompact board) {
         this.board = board;
         searchedNodes = 0;
+        this.goals = findGoals(board);
+
         long searchStartMillis = System.currentTimeMillis();
-
         List<EDirection> result = a_star(500); // depth of search tree
-
         long searchTime = System.currentTimeMillis() - searchStartMillis;
 
         if (verbose) {
@@ -51,7 +53,7 @@ public class MyAgent extends ArtificialAgent {
         // Init
         Map<Config, Integer> dist = new HashMap<>();
         Queue<Node> q = new PriorityQueue<>();
-        Config conf = Config.buildConfig(this.board);
+        Config conf = Config.buildConfig(this.board, this.goals);
 
         dist.put(conf, 0);
         q.add(new Node(conf, null, null, 0, h(conf, null,
@@ -114,11 +116,13 @@ public class MyAgent extends ArtificialAgent {
         return actions;
     }
 
-    public static int h(Config b, Point changed, int oldH) {
+    // Heuristic function
+    // This case - Manhattan distance of each box to its closest goal
+    public int h(Config b, Point changed, int oldH) {
         if (changed == null) return oldH;
         // If box was moved, update boxes-to-goals minDist
         int res = oldH - changed.dist;
-        changed.dist = Arrays.stream(b.goals).map(goal -> Math.abs(changed.x - goal.x) +
+        changed.dist = goals.stream().map(goal -> Math.abs(changed.x - goal.x) +
                 Math.abs(changed.y - goal.y)).reduce(Integer.MAX_VALUE, Math::min);
         return res + changed.dist;
     }
@@ -160,39 +164,32 @@ public class MyAgent extends ArtificialAgent {
             return "(" + x + " " + y + ")";
         }
 
-        @Override
         public int compareTo(Point o) {
             return Integer.compare(this.hashCode(), o.hashCode());
         }
     }
 
     static class Config implements Cloneable {
-        Point[] boxes, goals;
+        Point[] boxes;
         BoardCompact board;
         int hash;
 
-        public Config(Point[] boxes, Point[] goals, BoardCompact board) {
+        public Config(Point[] boxes, BoardCompact board) {
             this.boxes = boxes;
-            this.goals = goals;
             this.board = board;
             this.hash = -1;
         }
 
-        public static Config buildConfig(BoardCompact b) {
+        public static Config buildConfig(BoardCompact b, List<Point> goals) {
             List<Point> boxes = new ArrayList<>();
-            List<Point> goals = new ArrayList<>();
-            for (int i = 1; i < b.width() - 1; i++) {
-                for (int j = 1; j < b.height() - 1; j++) {
-                    if ((EEntity.SOME_BOX_FLAG & b.tiles[i][j]) != 0) boxes.add(new Point(i, j, -1));
-                    if ((EPlace.SOME_BOX_PLACE_FLAG & b.tiles[i][j]) != 0) goals.add(new Point(i, j, 0));
-                }
-            }
+            for (int i = 1; i < b.width() - 1; i++) for (int j = 1; j < b.height() - 1; j++)
+                if ((EEntity.SOME_BOX_FLAG & b.tiles[i][j]) != 0) boxes.add(new Point(i, j, -1));
             for (Point box : boxes) {
                 box.dist = goals.stream().map(goal -> Math.abs(box.x - goal.x) + Math.abs(box.y - goal.y))
                         .reduce(Integer.MAX_VALUE, Math::min);
             }
             boxes.sort((l, r) -> l.x == r.x ? r.y - l.y : r.x - l.x);
-            return new Config(boxes.toArray(Point[]::new), goals.toArray(Point[]::new), b);
+            return new Config(boxes.toArray(Point[]::new), b);
         }
 
         public Config clone() {
@@ -200,13 +197,8 @@ public class MyAgent extends ArtificialAgent {
             for (int i = 0; i < boxes.length; i++) {
                 Point box = boxes[i];
                 newBoxes[i] = new Point(box.x, box.y, box.dist);
-            };
-            Point[] newGoals = new Point[goals.length];
-            for (int i = 0; i < goals.length; i++) {
-                Point goal = goals[i];
-                newGoals[i] = new Point(goal.x, goal.y, goal.dist);
             }
-            return new Config(newBoxes, newGoals, board.clone());
+            return new Config(newBoxes, board.clone());
         }
 
         public Point moveBox(int x, int y, int tx, int ty) {
@@ -242,10 +234,9 @@ public class MyAgent extends ArtificialAgent {
 
     static class DeadSquareDetector {
         public static boolean[][] detectSimple(BoardCompact board) {
-            Config conf = Config.buildConfig(board);
             boolean[][] res = new boolean[board.width()][board.height()];
             // Flood fill for dead squares, starting from each goal
-            for (Point goal : conf.goals) pull(board.makeBoardSlim(), res, goal.x, goal.y);
+            for (Point goal : findGoals(board)) pull(board.makeBoardSlim(), res, goal.x, goal.y);
             for (int i = 0; i < board.width(); i++) for (int j = 0; j < board.height(); j++) res[i][j] ^= true;
             return res;
         }
@@ -261,5 +252,12 @@ public class MyAgent extends ArtificialAgent {
                 pull(board, res, nx, ny);
             }
         }
+    }
+
+    static List<Point> findGoals(BoardCompact board) {
+        List<Point> res = new ArrayList<>();
+        for (int i = 1; i < board.width() - 1; i++) for (int j = 1; j < board.height() - 1; j++)
+            if ((EPlace.SOME_BOX_PLACE_FLAG & board.tiles[i][j]) != 0) res.add(new Point(i, j, 0));
+        return res;
     }
 }
