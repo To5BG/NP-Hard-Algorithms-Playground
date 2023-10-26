@@ -4,11 +4,13 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.PriorityQueue;
 import java.util.Queue;
+import java.util.Set;
 
 import agents.ArtificialAgent;
 import game.actions.EDirection;
@@ -28,11 +30,8 @@ import game.board.slim.STile;
 public class MyAgent extends ArtificialAgent {
 
     protected BoardSlim board;
-
     protected int searchedNodes;
-
     protected List<Point> goals;
-
     protected int[] dirs;
 
     @Override
@@ -63,13 +62,7 @@ public class MyAgent extends ArtificialAgent {
         dist.put(start, 0);
         q.add(start);
 
-        boolean[][] deadSquares = DeadSquareDetector.detectSimple(this.board);
-//        System.out.println("dead squares: \n");
-//        for (int y = 0 ; y < this.board.height() ; ++y) {
-//            for (int x = 0 ; x < this.board.width() ; ++x)
-//                System.out.print((STile.WALL_FLAG & this.board.tile(x, y)) != 0 ? '#' : (deadSquares[x][y] ? 'X' : '_'));
-//            System.out.println();
-//        }
+        DeadSquareDetector dsd = new DeadSquareDetector(this.board);
         // A*
         Node curr = null;
         while (!q.isEmpty()) {
@@ -97,8 +90,8 @@ public class MyAgent extends ArtificialAgent {
                 int newCost = curr.g + 1;
                 // Don't consider if it does not improve on previous distance or if it leads to an unsolvable position
                 if (newCost + curr.h >= dist.getOrDefault(next, Integer.MAX_VALUE) || (action instanceof SPush &&
-                        (Arrays.stream(next.boxes).anyMatch(b -> deadSquares[b.x][b.y]) ||
-                                DeadSquareDetector.detectFreeze(board, movedBox.x, movedBox.y, ' ', deadSquares))))
+                        (Arrays.stream(next.boxes).anyMatch(b -> dsd.dead[b.x][b.y]) ||
+                                dsd.detectFreeze(next.board, movedBox.x, movedBox.y))))
                     continue;
                 dist.put(next, newCost);
                 // Update next state
@@ -113,6 +106,7 @@ public class MyAgent extends ArtificialAgent {
             actions.add(0, curr.pa.getDirection());
             curr = curr.parent;
         }
+//        System.out.println(dsd.skipped);
 //        System.out.println(actions.stream().map(o -> o.toString().substring(0, 1)).collect(Collectors.joining()));
         return actions;
     }
@@ -212,6 +206,7 @@ public class MyAgent extends ArtificialAgent {
     // Point record
     static class Point implements Comparable<Point> {
         int x, y;
+
         public Point(int x, int y) {
             this.x = x;
             this.y = y;
@@ -223,10 +218,19 @@ public class MyAgent extends ArtificialAgent {
     // Class for finding dead squares
     static class DeadSquareDetector {
 
+        boolean[][] dead;
+        int[] dirs = new int[]{-1,0,1,0};
+        int skipped = 0;
+
+        public DeadSquareDetector(BoardSlim board) {
+            this.dead = DeadSquareDetector.detectSimple(board);
+        }
+
         public static boolean[][] detectSimple(BoardSlim board) {
             boolean[][] res = new boolean[board.width()][board.height()];
             // Flood fill for dead squares, starting from each goal
             for (Point goal : findGoals(board)) pull(board, res, goal.x, goal.y, new int[]{0, 1, 0, -1});
+            // Invert result (not visited -> dead)
             for (int i = 0; i < board.width(); i++) for (int j = 0; j < board.height(); j++) res[i][j] ^= true;
             return res;
         }
@@ -235,28 +239,47 @@ public class MyAgent extends ArtificialAgent {
             res[x][y] = true;
             for (int i = 0; i < 4; i++) {
                 int nx = x + dirs[i], ny = y + dirs[(i + 1) % 4];
+                // Check bounds
                 if (nx < 1 || ny < 1 || nx > res.length - 2 || ny > res[0].length - 2) continue;
-                if (res[nx][ny] || (board.tiles[nx][ny] & STile.WALL_FLAG) != 0 ||
-                        (board.tiles[nx + dirs[i]][ny + dirs[(i + 1) % 4]] & STile.WALL_FLAG) != 0) continue;
+                // Check that it can be pulled (two non-walls in the direction)
+                if (res[nx][ny] || STile.isWall(board.tiles[nx][ny])||
+                        STile.isWall(board.tiles[nx + dirs[i]][ny + dirs[(i + 1) % 4]])) continue;
                 pull(board, res, nx, ny, dirs);
             }
         }
 
-        public static boolean detectFreeze(BoardSlim board, int x, int y, char prev, boolean[][] dead) {
-            if ((STile.PLACE_FLAG & board.tiles[x][y]) != 0) return false;
-            boolean xFroze = STile.isWall(board.tiles[x - 1][y]) || STile.isWall(board.tiles[x + 1][y]) ||
-                    (dead[x - 1][y] && dead[x + 1][y]);
-            if (!xFroze && STile.isBox(board.tiles[x - 1][y]) && prev != 'l')
-                xFroze = detectFreeze(board, x - 1, y, 'r', dead);
-            if (!xFroze && STile.isBox(board.tiles[x + 1][y]) && prev != 'r')
-                xFroze = detectFreeze(board, x + 1, y, 'l', dead);
-            if (!xFroze) return false;
-            if (STile.isWall(board.tiles[x][y - 1]) || STile.isWall(board.tiles[x][y + 1]) ||
-                    (dead[x][y - 1] && dead[x][y + 1])) return true;
-            if (STile.isBox(board.tiles[x][y - 1]) && prev != 'u')
-                return detectFreeze(board, x, y - 1, 'd', dead);
-            if (STile.isBox(board.tiles[x][y + 1]) && prev != 'd')
-                return detectFreeze(board, x, y + 1, 'u', dead);
+        public boolean detectFreeze(BoardSlim board, int x, int y) {
+            Set<Point> frozen = new HashSet<>();
+            // Get all frozen blocks in curr config
+            detectFreeze(board.clone(), x, y, frozen);
+            // If any frozen block is not on goal -> dead state
+            boolean res = frozen.stream().anyMatch(b -> (STile.PLACE_FLAG & board.tiles[b.x][b.y]) == 0);
+            if (res) this.skipped++;
+            return res;
+        }
+
+        public boolean detectFreeze(BoardSlim board, int x, int y, Set<Point> f) {
+            // Check if frozen in x- and y-axis
+            boolean[] frozen = new boolean[2];
+            for (int i = 0; i < 2; i++) {
+                int dx = x + dirs[i], dy = y + dirs[i + 1], ddx = x + dirs[i + 2], ddy = y + dirs[(i + 3) % 4];
+                // Check for an axis if there's 1 wall, or 2 dead states
+                frozen[i] = STile.isWall(board.tiles[dx][dy]) || STile.isWall(board.tiles[ddx][ddy]) ||
+                        (dead[dx][dy] && dead[ddx][ddy]);
+            }
+            for (int i = 0; i < 2; i++) if (frozen[i]) {
+                // Prevent circular check
+                board.tiles[x][y] = STile.WALL_FLAG;
+                int dy = y + dirs[i], dx = x + dirs[i + 1], ddy = y + dirs[i + 2], ddx = x + dirs[(i + 3) % 4];
+                // If box -> recursively check if next box is frozen
+                if (STile.isBox(board.tiles[dx][dy])) frozen[1 - i] = detectFreeze(board, dx, dy, f);
+                if (STile.isBox(board.tiles[ddx][ddy])) frozen[1 - i] = detectFreeze(board, ddx, ddy, f);
+            }
+            // If frozen from both axes
+            if (frozen[0] && frozen[1]) {
+                f.add(new Point(x, y));
+                return true;
+            }
             return false;
         }
     }

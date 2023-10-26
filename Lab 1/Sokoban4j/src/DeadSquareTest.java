@@ -26,7 +26,7 @@ public class DeadSquareTest {
     }
 
     public static void main(String[] args) {
-        File levels = new File("Lab 1/Sokoban4j/levels/Aymeric_du_Peloux_1_Minicosmos.sok");
+        File levels = new File("Lab 1/Sokoban4j/levels/test.sok");
         if (!levels.canRead()) {
             System.out.printf("can't find level file %s\n", levels.getAbsolutePath());
             return;
@@ -43,7 +43,9 @@ public class DeadSquareTest {
             BoardSlim bc = board.makeBoardCompact().makeBoardSlim();
 
             boolean[][] dead = MyAgent.DeadSquareDetector.detectSimple(bc);
-            
+
+            MyAgent.DeadSquareDetector dsd = new MyAgent.DeadSquareDetector(bc);
+            System.out.println("Freeze deadlock: " + (dsd.detectFreeze(bc, 4, 2)));
             System.out.println("dead squares: \n");
             for (int y = 0 ; y < bc.height() ; ++y) {
                 for (int x = 0 ; x < bc.width() ; ++x)
