@@ -35,7 +35,6 @@ public class MyAgent extends ArtificialAgent {
     protected List<Point> goals;
     protected static int[] dirs = new int[]{-1,0,1,0};
     protected DeadSquareDetector dsd;
-
     @Override
     protected List<EDirection> think(BoardCompact board) {
         this.board = board.makeBoardSlim();
@@ -153,7 +152,6 @@ public class MyAgent extends ArtificialAgent {
         SAction pa;
         int g, hash;
         double h;
-
         public Node(BoxPoint[] boxes, BoardSlim board, Node parent, SAction pa, int g, double h) {
             this.boxes = boxes;
             this.board = board;
@@ -202,17 +200,11 @@ public class MyAgent extends ArtificialAgent {
         public int compareTo(Node o) {
             return Double.compare(this.g + this.h, o.g + o.h);
         }
-
-        public String toString() {
-            return "<" + ((parent == null) ? "[null]" : parent.toString()) + " " +
-                    ((pa == null) ? "[null]" : pa.toString()) + g + " " + h + ">";
-        }
     }
     // Box point extension with two extra variables (id of closest goal, and distance to it)
     static class BoxPoint extends Point {
         double dist;
         int closestGoalId;
-
         public BoxPoint(int x, int y, double dist, int closestGoalId) {
             super(x, y);
             this.dist = dist;
@@ -222,7 +214,6 @@ public class MyAgent extends ArtificialAgent {
     // Point record
     static class Point {
         int x, y;
-
         public Point(int x, int y) {
             this.x = x;
             this.y = y;
@@ -230,16 +221,12 @@ public class MyAgent extends ArtificialAgent {
     }
     // Class for finding dead squares
     static class DeadSquareDetector {
-
         boolean[][] dead;
-        int[] dirs = new int[]{-1,0,1,0};
+        int[] dirs = new int[]{-1,0,1,0}, skipped = new int[]{0, 0, 0};
         byte obst = STile.WALL_FLAG | STile.BOX_FLAG;
-        int[] skipped = new int[]{0, 0, 0};
         boolean corral = true;
         int corralRisk = 0, corralBoxes = 0, corralGoals = 0;
-        Map<String, Boolean> freezeCache = new HashMap<>();
-        Map<String, Boolean> corralCache = new HashMap<>();
-
+        Map<String, Boolean> freezeCache = new HashMap<>(), corralCache = new HashMap<>();
         public DeadSquareDetector(BoardSlim board) {
             this.dead = DeadSquareDetector.detectSimple(board);
         }
