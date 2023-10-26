@@ -11,6 +11,7 @@ import java.util.Map;
 import java.util.PriorityQueue;
 import java.util.Queue;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import agents.ArtificialAgent;
 import game.actions.EDirection;
@@ -33,17 +34,22 @@ public class MyAgent extends ArtificialAgent {
     protected int searchedNodes;
     protected List<Point> goals;
     protected static int[] dirs = new int[]{-1,0,1,0};
+    protected DeadSquareDetector dsd;
 
     @Override
     protected List<EDirection> think(BoardCompact board) {
         this.board = board.makeBoardSlim();
-        searchedNodes = 0;
+        this.searchedNodes = 0;
         this.goals = findGoals(this.board);
+        this.dsd = new DeadSquareDetector(this.board);
 
         // Start from 1 (or higher) for less risky solver
         int corralRisk = 0;
         long searchStartMillis = System.currentTimeMillis();
         while (corralRisk <= this.board.boxCount) {
+            // Clear cache from old corrals
+            dsd.corralCache = dsd.corralCache.entrySet().stream().filter(e -> !e.getValue())
+                    .collect(Collectors.toMap(Map.Entry::getKey, stringBooleanEntry -> false));
             List<EDirection> result = a_star(500, corralRisk++); // depth of search tree
             if (result == null) continue;
             long searchTime = System.currentTimeMillis() - searchStartMillis;
@@ -62,7 +68,6 @@ public class MyAgent extends ArtificialAgent {
         Map<Node, Integer> dist = new HashMap<>();
         Queue<Node> q = new PriorityQueue<>();
         BoxPoint[] boxes = findBoxes(board);
-        DeadSquareDetector dsd = new DeadSquareDetector(this.board);
         dsd.corralRisk = corralRisk;
         boolean completed = false;
         Node start = new Node(boxes, board, null, null, 0, greedyMatching(boxes, goals));
@@ -74,10 +79,7 @@ public class MyAgent extends ArtificialAgent {
             curr = q.poll();
             searchedNodes++;
             // Guard clauses
-            if (curr.board.isVictory()) {
-                completed = true;
-                break;
-            }
+            if (completed = curr.board.isVictory()) break;
             if (curr.g > maxCost) continue;
             List<SAction> actions = new ArrayList<>(4);
             // Add possible moves
@@ -116,7 +118,7 @@ public class MyAgent extends ArtificialAgent {
             curr = curr.parent;
         }
         System.out.println(Arrays.stream(dsd.skipped).mapToObj(i -> i + " ").reduce("", String::concat));
-//        System.out.println(actions.stream().map(o -> o.toString().substring(0, 1)).collect(Collectors.joining()));
+        System.out.println(actions.stream().map(o -> o.toString().substring(0, 1)).collect(Collectors.joining()));
         return actions;
     }
     // Heuristic function
@@ -208,9 +210,10 @@ public class MyAgent extends ArtificialAgent {
     }
     // Box point extension with two extra variables (id of closest goal, and distance to it)
     static class BoxPoint extends Point {
-        double dist, closestGoalId;
+        double dist;
+        int closestGoalId;
 
-        public BoxPoint(int x, int y, double dist, double closestGoalId) {
+        public BoxPoint(int x, int y, double dist, int closestGoalId) {
             super(x, y);
             this.dist = dist;
             this.closestGoalId = closestGoalId;
