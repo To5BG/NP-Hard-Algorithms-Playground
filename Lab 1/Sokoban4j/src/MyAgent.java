@@ -97,7 +97,9 @@ public class MyAgent extends ArtificialAgent {
                 int newCost = curr.g + 1;
                 // Don't consider if it does not improve on previous distance or if it leads to an unsolvable position
                 if (newCost + curr.h >= dist.getOrDefault(next, Integer.MAX_VALUE) || (action instanceof SPush &&
-                        Arrays.stream(next.boxes).anyMatch(b -> deadSquares[b.x][b.y]))) continue;
+                        (Arrays.stream(next.boxes).anyMatch(b -> deadSquares[b.x][b.y]) ||
+                                DeadSquareDetector.detectFreeze(board, movedBox.x, movedBox.y, ' ', deadSquares))))
+                    continue;
                 dist.put(next, newCost);
                 // Update next state
                 next.parent = curr; next.pa = action; next.g = newCost; next.h = h(boxes, goals, movedBox, curr.h);
@@ -123,8 +125,8 @@ public class MyAgent extends ArtificialAgent {
         // greedy matching
         // If distance to best goal gets large, update matching
         // Point bestGoal = goals.get(changed.closestGoalId);
-        //int newDist = Math.abs(bestGoal.x - changed.x) + Math.abs(bestGoal.y - changed.y);
-        //for (BoxPoint b : boxes) if (b.dist < newDist) return greedyMatching(boxes, goals);
+        // int newDist = Math.abs(bestGoal.x - changed.x) + Math.abs(bestGoal.y - changed.y);
+        // for (BoxPoint b : boxes) if (b.dist < newDist) return greedyMatching(boxes, goals);
 
         // closest matching
         // update the closest matching
@@ -220,6 +222,7 @@ public class MyAgent extends ArtificialAgent {
     }
     // Class for finding dead squares
     static class DeadSquareDetector {
+
         public static boolean[][] detectSimple(BoardSlim board) {
             boolean[][] res = new boolean[board.width()][board.height()];
             // Flood fill for dead squares, starting from each goal
@@ -237,6 +240,24 @@ public class MyAgent extends ArtificialAgent {
                         (board.tiles[nx + dirs[i]][ny + dirs[(i + 1) % 4]] & STile.WALL_FLAG) != 0) continue;
                 pull(board, res, nx, ny, dirs);
             }
+        }
+
+        public static boolean detectFreeze(BoardSlim board, int x, int y, char prev, boolean[][] dead) {
+            if ((STile.PLACE_FLAG & board.tiles[x][y]) != 0) return false;
+            boolean xFroze = STile.isWall(board.tiles[x - 1][y]) || STile.isWall(board.tiles[x + 1][y]) ||
+                    (dead[x - 1][y] && dead[x + 1][y]);
+            if (!xFroze && STile.isBox(board.tiles[x - 1][y]) && prev != 'l')
+                xFroze = detectFreeze(board, x - 1, y, 'r', dead);
+            if (!xFroze && STile.isBox(board.tiles[x + 1][y]) && prev != 'r')
+                xFroze = detectFreeze(board, x + 1, y, 'l', dead);
+            if (!xFroze) return false;
+            if (STile.isWall(board.tiles[x][y - 1]) || STile.isWall(board.tiles[x][y + 1]) ||
+                    (dead[x][y - 1] && dead[x][y + 1])) return true;
+            if (STile.isBox(board.tiles[x][y - 1]) && prev != 'u')
+                return detectFreeze(board, x, y - 1, 'd', dead);
+            if (STile.isBox(board.tiles[x][y + 1]) && prev != 'd')
+                return detectFreeze(board, x, y + 1, 'u', dead);
+            return false;
         }
     }
     // Helper that matches each box to its closest goal, taking other matches into account
