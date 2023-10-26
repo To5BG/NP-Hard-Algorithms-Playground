@@ -116,22 +116,23 @@ public class MyAgent extends ArtificialAgent {
 //        System.out.println(actions.stream().map(o -> o.toString().substring(0, 1)).collect(Collectors.joining()));
         return actions;
     }
-
     // Heuristic function
     // This case - Manhattan distance of each box to its closest goal
     public int h(Point[] boxes, List<Point> goals, Point changed, int oldH) {
-        // If boxes did not change, or moved box is closer to previous best, do not update
+        // If boxes did not change, do not update
         if (changed == null) return oldH;
         Point bestGoal = goals.get(changed.closestGoalId);
         int newDist = Math.abs(bestGoal.x - changed.x) + Math.abs(bestGoal.y - changed.y);
+        // If moved box is closer to previous best, do not update
         if (changed.dist >= newDist) {
             int res = oldH - changed.dist;
             changed.dist = newDist;
             return res + changed.dist;
         }
+        // else match again
         else return greedyMatching(boxes, goals);
     }
-
+    // State
     static class Node implements Comparable<Node>, Cloneable {
         Point[] boxes;
         BoardSlim board;
@@ -193,7 +194,7 @@ public class MyAgent extends ArtificialAgent {
                     ((pa == null) ? "[null]" : pa.toString()) + g + " " + h + ">";
         }
     }
-
+    // Point record with two extra variables for boxes (id of closest goal, and distance to it)
     static class Point implements Comparable<Point> {
         int x, y, dist, closestGoalId;
 
@@ -208,7 +209,7 @@ public class MyAgent extends ArtificialAgent {
             return Integer.compare(this.hashCode(), o.hashCode());
         }
     }
-
+    // Class for finding dead squares
     static class DeadSquareDetector {
         public static boolean[][] detectSimple(BoardSlim board) {
             boolean[][] res = new boolean[board.width()][board.height()];
@@ -229,7 +230,8 @@ public class MyAgent extends ArtificialAgent {
             }
         }
     }
-
+    // Helper that matches each box to its closest goal, taking other matches into account
+    // Returns heuristic (sum of Manhattan distances of matches)
     static int greedyMatching(Point[] boxes, List<Point> goals) {
         Queue<Point> pq = new PriorityQueue<>(Comparator.comparing(a -> a.dist));
         for (int i = 0; i < boxes.length; i++) for (Point g : goals) {
@@ -250,7 +252,7 @@ public class MyAgent extends ArtificialAgent {
         if (matchedGoals.size() != goals.size()) throw new RuntimeException();
         return res;
     }
-
+    // Helper for finding all goals in a board
     static List<Point> findGoals(BoardSlim board) {
         List<Point> res = new ArrayList<>();
         int id = 0;
@@ -258,7 +260,7 @@ public class MyAgent extends ArtificialAgent {
             if ((STile.PLACE_FLAG & board.tiles[i][j]) != 0) res.add(new Point(i, j, -1, id++));
         return res;
     }
-
+    // Helper for finding all boxes in a board
     static Point[] findBoxes(BoardSlim board) {
         List<Point> res = new ArrayList<>();
         for (int i = 1; i < board.width() - 1; i++) for (int j = 1; j < board.height() - 1; j++)
