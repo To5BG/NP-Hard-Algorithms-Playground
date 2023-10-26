@@ -83,19 +83,18 @@ public class MyAgent extends ArtificialAgent {
                 Node next = curr.clone();
                 EDirection dir = action.getDirection();
                 byte nextX = (byte) (next.board.playerX + dir.dX), nextY = (byte) (next.board.playerY + dir.dY);
-                BoxPoint movedBox = null;
+                BoxPoint mBox = null;
                 // Move player and, if push action, the box
-                if (action instanceof SPush) movedBox = next.moveBox(nextX, nextY, nextX + dir.dX, nextY + dir.dY);
+                if (action instanceof SPush) mBox = next.moveBox(nextX, nextY, nextX + dir.dX, nextY + dir.dY);
                 next.board.movePlayer(next.board.playerX, next.board.playerY, nextX, nextY);
                 int newCost = curr.g + 1;
                 // Don't consider if it does not improve on previous distance or if it leads to an unsolvable position
                 if (newCost + curr.h >= dist.getOrDefault(next, Integer.MAX_VALUE) || (action instanceof SPush &&
-                        (Arrays.stream(next.boxes).anyMatch(b -> dsd.dead[b.x][b.y]) ||
-                                dsd.detectFreeze(next.board, movedBox.x, movedBox.y))))
+                        (dsd.dead[mBox.x][mBox.y] || dsd.detectFreeze(next.board, mBox.x, mBox.y, next.boxes))))
                     continue;
                 dist.put(next, newCost);
                 // Update next state
-                next.parent = curr; next.pa = action; next.g = newCost; next.h = h(boxes, goals, movedBox, curr.h);
+                next.parent = curr; next.pa = action; next.g = newCost; next.h = h(boxes, goals, mBox, curr.h);
                 q.add(next);
             }
         }
@@ -111,23 +110,26 @@ public class MyAgent extends ArtificialAgent {
         return actions;
     }
     // Heuristic function
-    // This case - Manhattan distance of each box to its closest goal
-    public int h(BoxPoint[] boxes, List<Point> goals, BoxPoint changed, int oldH) {
+    public double h(BoxPoint[] boxes, List<Point> goals, BoxPoint changed, double oldH) {
         // If boxes did not change, do not update
         if (changed == null) return oldH;
 
         // greedy matching
         // If distance to best goal gets large, update matching
-        // Point bestGoal = goals.get(changed.closestGoalId);
-        // int newDist = Math.abs(bestGoal.x - changed.x) + Math.abs(bestGoal.y - changed.y);
-        // for (BoxPoint b : boxes) if (b.dist < newDist) return greedyMatching(boxes, goals);
+//         Point bestGoal = goals.get(changed.closestGoalId);
+//         int newDist = Math.abs(bestGoal.x - changed.x) + Math.abs(bestGoal.y - changed.y);
+//         for (BoxPoint b : boxes) if (b.dist < newDist) return greedyMatching(boxes, goals);
 
         // closest matching
         // update the closest matching
-        int newDist = goals.stream().map(g -> Math.abs(changed.x - g.x) + Math.abs(changed.y - g.y))
+        double newDist = goals.stream().map(g -> Math.abs(changed.x - g.x) + Math.abs(changed.y - g.y))
                 .reduce(0, Integer::min);
 
-        int res = oldH - changed.dist;
+        // closest matching, Pythagorean
+//        double newDist = goals.stream().map(g -> Math.sqrt(Math.pow(changed.x - g.x, 2) + Math.pow(changed.y - g.y, 2)))
+//                .reduce(0.0, Double::min);
+
+        double res = oldH - changed.dist;
         changed.dist = newDist;
         return res + changed.dist;
     }
@@ -137,9 +139,11 @@ public class MyAgent extends ArtificialAgent {
         BoardSlim board;
         Node parent;
         SAction pa;
-        int g, h, hash;
+        int g, hash;
 
-        public Node(BoxPoint[] boxes, BoardSlim board, Node parent, SAction pa, int g, int h) {
+        double h;
+
+        public Node(BoxPoint[] boxes, BoardSlim board, Node parent, SAction pa, int g, double h) {
             this.boxes = boxes;
             this.board = board;
             this.parent = parent;
@@ -185,7 +189,7 @@ public class MyAgent extends ArtificialAgent {
         }
 
         public int compareTo(Node o) {
-            return Integer.compare(this.g + this.h, o.g + o.h);
+            return Double.compare(this.g + this.h, o.g + o.h);
         }
 
         public String toString() {
@@ -195,9 +199,9 @@ public class MyAgent extends ArtificialAgent {
     }
     // Box point extension with two extra variables (id of closest goal, and distance to it)
     static class BoxPoint extends Point {
-        int dist, closestGoalId;
+        double dist, closestGoalId;
 
-        public BoxPoint(int x, int y, int dist, int closestGoalId) {
+        public BoxPoint(int x, int y, double dist, double closestGoalId) {
             super(x, y);
             this.dist = dist;
             this.closestGoalId = closestGoalId;
@@ -221,6 +225,7 @@ public class MyAgent extends ArtificialAgent {
         boolean[][] dead;
         int[] dirs = new int[]{-1,0,1,0};
         int skipped = 0;
+        Map<String, Boolean> freezeCache = new HashMap<>();
 
         public DeadSquareDetector(BoardSlim board) {
             this.dead = DeadSquareDetector.detectSimple(board);
@@ -248,13 +253,17 @@ public class MyAgent extends ArtificialAgent {
             }
         }
 
-        public boolean detectFreeze(BoardSlim board, int x, int y) {
+        public boolean detectFreeze(BoardSlim board, int x, int y, BoxPoint[] boxes) {
+            // Return cached config if possible
+            String k = Arrays.stream(boxes).map(b -> b.x + "," + b.y + ",").reduce("", String::concat);
+            if (freezeCache.containsKey(k)) return freezeCache.get(k);
             Set<Point> frozen = new HashSet<>();
             // Get all frozen blocks in curr config
             detectFreeze(board.clone(), x, y, frozen);
             // If any frozen block is not on goal -> dead state
             boolean res = frozen.stream().anyMatch(b -> (STile.PLACE_FLAG & board.tiles[b.x][b.y]) == 0);
             if (res) this.skipped++;
+            freezeCache.put(k, res);
             return res;
         }
 
@@ -306,7 +315,6 @@ public class MyAgent extends ArtificialAgent {
     // Helper for finding all goals in a board
     static List<Point> findGoals(BoardSlim board) {
         List<Point> res = new ArrayList<>();
-        int id = 0;
         for (int i = 1; i < board.width() - 1; i++) for (int j = 1; j < board.height() - 1; j++)
             if ((STile.PLACE_FLAG & board.tiles[i][j]) != 0) res.add(new Point(i, j));
         return res;

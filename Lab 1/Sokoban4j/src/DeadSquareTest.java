@@ -1,6 +1,5 @@
 import java.io.File;
 
-import game.board.compact.*;
 import game.board.oop.*;
 import game.board.slim.BoardSlim;
 import game.board.slim.STile;
@@ -45,7 +44,7 @@ public class DeadSquareTest {
             boolean[][] dead = MyAgent.DeadSquareDetector.detectSimple(bc);
 
             MyAgent.DeadSquareDetector dsd = new MyAgent.DeadSquareDetector(bc);
-            System.out.println("Freeze deadlock: " + (dsd.detectFreeze(bc, 4, 2)));
+            System.out.println("Freeze deadlock: " + (dsd.detectFreeze(bc, 4, 2, new MyAgent.BoxPoint[]{})));
             System.out.println("dead squares: \n");
             for (int y = 0 ; y < bc.height() ; ++y) {
                 for (int x = 0 ; x < bc.width() ; ++x)
