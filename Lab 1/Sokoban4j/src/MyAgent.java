@@ -110,7 +110,7 @@ public class MyAgent extends ArtificialAgent {
         return actions;
     }
     // Heuristic function
-    public double h(BoxPoint[] boxes, List<Point> goals, BoxPoint changed, double oldH) {
+    private double h(BoxPoint[] boxes, List<Point> goals, BoxPoint changed, double oldH) {
         // If boxes did not change, do not update
         if (changed == null) return oldH;
 
@@ -240,7 +240,7 @@ public class MyAgent extends ArtificialAgent {
             return res;
         }
 
-        public static void pull(BoardSlim board, boolean[][] res, int x, int y, int[] dirs) {
+        private static void pull(BoardSlim board, boolean[][] res, int x, int y, int[] dirs) {
             res[x][y] = true;
             for (int i = 0; i < 4; i++) {
                 int nx = x + dirs[i], ny = y + dirs[(i + 1) % 4];
@@ -267,7 +267,7 @@ public class MyAgent extends ArtificialAgent {
             return res;
         }
 
-        public boolean detectFreeze(BoardSlim board, int x, int y, Set<Point> f) {
+        private boolean detectFreeze(BoardSlim board, int x, int y, Set<Point> f) {
             // Check if frozen in x- and y-axis
             boolean[] frozen = new boolean[2];
             for (int i = 0; i < 2; i++) {
@@ -294,7 +294,7 @@ public class MyAgent extends ArtificialAgent {
     }
     // Helper that matches each box to its closest goal, taking other matches into account
     // Returns heuristic (sum of Manhattan distances of matches)
-    static int greedyMatching(BoxPoint[] boxes, List<Point> goals) {
+    private static int greedyMatching(BoxPoint[] boxes, List<Point> goals) {
         Queue<BoxPoint> pq = new PriorityQueue<>(Comparator.comparing(a -> a.dist));
         for (int i = 0; i < boxes.length; i++) for (int j = 0; j < goals.size(); j++) {
             BoxPoint b = boxes[i]; Point g = goals.get(j);
@@ -313,14 +313,14 @@ public class MyAgent extends ArtificialAgent {
         return res;
     }
     // Helper for finding all goals in a board
-    static List<Point> findGoals(BoardSlim board) {
+    private static List<Point> findGoals(BoardSlim board) {
         List<Point> res = new ArrayList<>();
         for (int i = 1; i < board.width() - 1; i++) for (int j = 1; j < board.height() - 1; j++)
             if ((STile.PLACE_FLAG & board.tiles[i][j]) != 0) res.add(new Point(i, j));
         return res;
     }
     // Helper for finding all boxes in a board
-    static BoxPoint[] findBoxes(BoardSlim board) {
+    private static BoxPoint[] findBoxes(BoardSlim board) {
         List<BoxPoint> res = new ArrayList<>();
         for (int i = 1; i < board.width() - 1; i++) for (int j = 1; j < board.height() - 1; j++)
             if ((STile.BOX_FLAG & board.tiles[i][j]) != 0) res.add(new BoxPoint(i, j, -1, -1));
