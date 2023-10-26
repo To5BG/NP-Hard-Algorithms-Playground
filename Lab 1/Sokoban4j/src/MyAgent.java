@@ -51,14 +51,13 @@ public class MyAgent extends ArtificialAgent {
 
     private List<EDirection> a_star(int maxCost) {
         // Init
-        Map<Config, Integer> dist = new HashMap<>();
+        Map<Node, Integer> dist = new HashMap<>();
         Queue<Node> q = new PriorityQueue<>();
-        Config conf = Config.buildConfig(this.board, this.goals);
-
-        dist.put(conf, 0);
-        q.add(new Node(conf, null, null, 0, h(conf, null,
-                Arrays.stream(conf.boxes).map(b -> b.dist).reduce(0, Integer::sum))));
-        Node curr = null;
+        List<Point> boxes = findBoxes(board, goals);
+        Node start = new Node(boxes.toArray(Point[]::new), board, null, null, 0,
+                h(null, boxes.stream().map(b -> b.dist).reduce(0, Integer::sum)));
+        dist.put(start, 0);
+        q.add(start);
 
         boolean[][] deadSquares = DeadSquareDetector.detectSimple(this.board);
 //        System.out.println("dead squares: \n");
@@ -67,22 +66,24 @@ public class MyAgent extends ArtificialAgent {
 //                System.out.print(CTile.isWall(board.tile(x, y)) ? '#' : (deadSquares[x][y] ? 'X' : '_'));
 //            System.out.println();
 //        }
+        // A*
+        Node curr = null;
         while (!q.isEmpty()) {
             curr = q.poll();
             searchedNodes++;
             // Guard clauses
-            if (curr.s.board.isVictory()) break;
+            if (curr.board.isVictory()) break;
             if (curr.g > maxCost) continue;
             List<CAction> actions = new ArrayList<>(4);
             // Add possible moves
             for (CMove move : CMove.getActions())
-                if (move.isPossible(curr.s.board) && (!(curr.pa instanceof CMove) ||
+                if (move.isPossible(curr.board) && (!(curr.pa instanceof CMove) ||
                         !move.getDirection().equals(curr.pa.getDirection().opposite()))) actions.add(move);
             // Add possible pushes
-            for (CPush push : CPush.getActions()) if (push.isPossible(curr.s.board)) actions.add(push);
+            for (CPush push : CPush.getActions()) if (push.isPossible(curr.board)) actions.add(push);
             // For each possible action
             for (CAction action : actions) {
-                Config next = curr.s.clone();
+                Node next = curr.clone();
                 EDirection dir = action.getDirection();
                 int nextX = next.board.playerX + dir.dX;
                 int nextY = next.board.playerY + dir.dY;
@@ -101,13 +102,17 @@ public class MyAgent extends ArtificialAgent {
                 if (newCost + curr.h >= dist.getOrDefault(next, Integer.MAX_VALUE) || (action instanceof CPush &&
                         Arrays.stream(next.boxes).anyMatch(b -> deadSquares[b.x][b.y]))) continue;
                 dist.put(next, newCost);
-                q.add(new Node(next, curr, action, newCost, h(next, movedBox, curr.h)));
+                next.parent = curr;
+                next.pa = action;
+                next.g = newCost;
+                next.h = h(movedBox, curr.h);
+                q.add(next);
             }
         }
         // Backtracking to build action chain
         if (curr == null) return null;
         List<EDirection> actions = new LinkedList<>();
-        while (!curr.s.board.equals(this.board)) {
+        while (!curr.board.equals(this.board)) {
             actions.add(0, curr.pa.getDirection());
             curr = curr.parent;
         }
@@ -118,7 +123,7 @@ public class MyAgent extends ArtificialAgent {
 
     // Heuristic function
     // This case - Manhattan distance of each box to its closest goal
-    public int h(Config b, Point changed, int oldH) {
+    public int h(Point changed, int oldH) {
         if (changed == null) return oldH;
         // If box was moved, update boxes-to-goals minDist
         int res = oldH - changed.dist;
@@ -127,78 +132,30 @@ public class MyAgent extends ArtificialAgent {
         return res + changed.dist;
     }
 
-    static class Node implements Comparable<Node> {
-        Config s;
+    static class Node implements Comparable<Node>, Cloneable {
+        Point[] boxes;
+        BoardCompact board;
         Node parent;
         CAction pa;
-        int g, h;
+        int g, h, hash;
 
-        public Node(Config s, Node parent, CAction pa, int g, int h) {
-            this.s = s;
+        public Node(Point[] boxes, BoardCompact board, Node parent, CAction pa, int g, int h) {
+            this.boxes = boxes;
+            this.board = board;
             this.parent = parent;
             this.pa = pa;
             this.g = g;
             this.h = h;
-        }
-
-        @Override
-        public int compareTo(Node o) {
-            return Integer.compare(this.g + this.h, o.g + o.h);
-        }
-
-        public String toString() {
-            return "<" + s.toString() + " " + ((pa == null) ? "[null]" : pa.toString()) + g + " " + h + ">";
-        }
-    }
-
-    static class Point implements Comparable<Point> {
-        int x, y, dist;
-
-        public Point(int x, int y, int dist) {
-            this.x = x;
-            this.y = y;
-            this.dist = dist;
-        }
-
-        public String toString() {
-            return "(" + x + " " + y + ")";
-        }
-
-        public int compareTo(Point o) {
-            return Integer.compare(this.hashCode(), o.hashCode());
-        }
-    }
-
-    static class Config implements Cloneable {
-        Point[] boxes;
-        BoardCompact board;
-        int hash;
-
-        public Config(Point[] boxes, BoardCompact board) {
-            this.boxes = boxes;
-            this.board = board;
             this.hash = -1;
         }
 
-        public static Config buildConfig(BoardCompact b, List<Point> goals) {
-            List<Point> boxes = new ArrayList<>();
-            for (int i = 1; i < b.width() - 1; i++) for (int j = 1; j < b.height() - 1; j++)
-                if ((EEntity.SOME_BOX_FLAG & b.tiles[i][j]) != 0) boxes.add(new Point(i, j, -1));
-            for (Point box : boxes) {
-                box.dist = goals.stream().map(goal -> Math.abs(box.x - goal.x) + Math.abs(box.y - goal.y))
-                        .reduce(Integer.MAX_VALUE, Math::min);
-            }
-            boxes.sort((l, r) -> l.x == r.x ? r.y - l.y : r.x - l.x);
-            return new Config(boxes.toArray(Point[]::new), b);
-        }
-
-        public Config clone() {
+        public Node clone() {
             Point[] newBoxes = new Point[boxes.length];
             for (int i = 0; i < boxes.length; i++) {
                 Point box = boxes[i];
                 newBoxes[i] = new Point(box.x, box.y, box.dist);
             }
-            return new Config(newBoxes, board.clone());
+            return new Node(newBoxes, board.clone(), parent, pa, g, h);
         }
 
         public Point moveBox(int x, int y, int tx, int ty) {
@@ -216,7 +173,7 @@ public class MyAgent extends ArtificialAgent {
         }
 
         public boolean equals(Object c) {
-            if (!(c instanceof Config)) return false;
+            if (!(c instanceof Node)) return false;
             if (c == this) return true;
             return this.hashCode() == c.hashCode();
         }
@@ -227,8 +184,27 @@ public class MyAgent extends ArtificialAgent {
                     board.playerX + "," + board.playerY).hashCode();
         }
 
+        public int compareTo(Node o) {
+            return Integer.compare(this.g + this.h, o.g + o.h);
+        }
+
         public String toString() {
-            return board.toString();
+            return "<" + ((parent == null) ? "[null]" : parent.toString()) + " " +
+                    ((pa == null) ? "[null]" : pa.toString()) + g + " " + h + ">";
+        }
+    }
+
+    static class Point implements Comparable<Point> {
+        int x, y, dist;
+
+        public Point(int x, int y, int dist) {
+            this.x = x;
+            this.y = y;
+            this.dist = dist;
+        }
+
+        public int compareTo(Point o) {
+            return Integer.compare(this.hashCode(), o.hashCode());
         }
     }
 
@@ -258,6 +234,18 @@ public class MyAgent extends ArtificialAgent {
         List<Point> res = new ArrayList<>();
         for (int i = 1; i < board.width() - 1; i++) for (int j = 1; j < board.height() - 1; j++)
             if ((EPlace.SOME_BOX_PLACE_FLAG & board.tiles[i][j]) != 0) res.add(new Point(i, j, 0));
+        return res;
+    }
+
+    static List<Point> findBoxes(BoardCompact board, List<Point> goals) {
+        List<Point> res = new ArrayList<>();
+        for (int i = 1; i < board.width() - 1; i++) for (int j = 1; j < board.height() - 1; j++)
+            if ((EEntity.SOME_BOX_FLAG & board.tiles[i][j]) != 0) res.add(new Point(i, j, -1));
+        for (Point box : res) {
+            box.dist = goals.stream().map(goal -> Math.abs(box.x - goal.x) + Math.abs(box.y - goal.y))
+                    .reduce(Integer.MAX_VALUE, Math::min);
+        }
+        res.sort((l, r) -> l.x == r.x ? r.y - l.y : r.x - l.x);
         return res;
     }
 }
