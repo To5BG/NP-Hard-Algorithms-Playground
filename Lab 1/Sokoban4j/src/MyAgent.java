@@ -32,44 +32,52 @@ public class MyAgent extends ArtificialAgent {
     protected BoardSlim board;
     protected int searchedNodes;
     protected List<Point> goals;
-    protected int[] dirs;
+    protected static int[] dirs = new int[]{-1,0,1,0};
 
     @Override
     protected List<EDirection> think(BoardCompact board) {
         this.board = board.makeBoardSlim();
         searchedNodes = 0;
         this.goals = findGoals(this.board);
-        this.dirs = new int[]{-1,0,1,0};
 
+        // Start from 1 (or higher) for less risky solver
+        int corralRisk = 0;
         long searchStartMillis = System.currentTimeMillis();
-        List<EDirection> result = a_star(500); // depth of search tree
-        long searchTime = System.currentTimeMillis() - searchStartMillis;
-
-        if (verbose) {
-            out.println("Nodes visited: " + searchedNodes);
-            out.printf("Performance: %.1f nodes/sec\n",
-                    ((double) searchedNodes / (double) searchTime * 1000));
+        while (corralRisk <= this.board.boxCount) {
+            List<EDirection> result = a_star(500, corralRisk++); // depth of search tree
+            if (result == null) continue;
+            long searchTime = System.currentTimeMillis() - searchStartMillis;
+            if (verbose) {
+                out.println("Nodes visited: " + searchedNodes);
+                out.printf("Performance: %.1f nodes/sec\n",
+                        ((double) searchedNodes / (double) searchTime * 1000));
+            }
+            if (!result.isEmpty()) return result;
         }
-        return result.isEmpty() ? null : result;
+        return null;
     }
 
-    private List<EDirection> a_star(int maxCost) {
+    private List<EDirection> a_star(int maxCost, int corralRisk) {
         // Initialize
         Map<Node, Integer> dist = new HashMap<>();
         Queue<Node> q = new PriorityQueue<>();
         BoxPoint[] boxes = findBoxes(board);
+        DeadSquareDetector dsd = new DeadSquareDetector(this.board);
+        dsd.corralRisk = corralRisk;
+        boolean completed = false;
         Node start = new Node(boxes, board, null, null, 0, greedyMatching(boxes, goals));
         dist.put(start, 0);
         q.add(start);
-
-        DeadSquareDetector dsd = new DeadSquareDetector(this.board);
         // A*
         Node curr = null;
         while (!q.isEmpty()) {
             curr = q.poll();
             searchedNodes++;
             // Guard clauses
-            if (curr.board.isVictory()) break;
+            if (curr.board.isVictory()) {
+                completed = true;
+                break;
+            }
             if (curr.g > maxCost) continue;
             List<SAction> actions = new ArrayList<>(4);
             // Add possible moves
@@ -90,22 +98,24 @@ public class MyAgent extends ArtificialAgent {
                 int newCost = curr.g + 1;
                 // Don't consider if it does not improve on previous distance or if it leads to an unsolvable position
                 if (newCost + curr.h >= dist.getOrDefault(next, Integer.MAX_VALUE) || (action instanceof SPush &&
-                        (dsd.dead[mBox.x][mBox.y] || dsd.detectFreeze(next.board, mBox.x, mBox.y, next.boxes))))
+                        (dsd.detectSimple(mBox.x, mBox.y) ||
+                                dsd.detectFreeze(next.board, mBox.x, mBox.y, next.boxes) ||
+                                dsd.detectCorral(next.board, mBox.x, mBox.y, dir.dX, dir.dY, next.boxes))))
                     continue;
                 dist.put(next, newCost);
                 // Update next state
-                next.parent = curr; next.pa = action; next.g = newCost; next.h = h(boxes, goals, mBox, curr.h);
+                next.parent = curr; next.pa = action; next.g = newCost; next.h = h(next.boxes, goals, mBox, curr.h);
                 q.add(next);
             }
         }
         // Backtracking to build action chain
-        if (curr == null) return null;
+        if (curr == null || !completed) return null;
         List<EDirection> actions = new LinkedList<>();
         while (!curr.board.equals(this.board)) {
             actions.add(0, curr.pa.getDirection());
             curr = curr.parent;
         }
-//        System.out.println(dsd.skipped);
+        System.out.println(Arrays.stream(dsd.skipped).mapToObj(i -> i + " ").reduce("", String::concat));
 //        System.out.println(actions.stream().map(o -> o.toString().substring(0, 1)).collect(Collectors.joining()));
         return actions;
     }
@@ -140,7 +150,6 @@ public class MyAgent extends ArtificialAgent {
         Node parent;
         SAction pa;
         int g, hash;
-
         double h;
 
         public Node(BoxPoint[] boxes, BoardSlim board, Node parent, SAction pa, int g, double h) {
@@ -208,15 +217,12 @@ public class MyAgent extends ArtificialAgent {
         }
     }
     // Point record
-    static class Point implements Comparable<Point> {
+    static class Point {
         int x, y;
 
         public Point(int x, int y) {
             this.x = x;
             this.y = y;
-        }
-        public int compareTo(Point o) {
-            return Integer.compare(this.hashCode(), o.hashCode());
         }
     }
     // Class for finding dead squares
@@ -224,13 +230,17 @@ public class MyAgent extends ArtificialAgent {
 
         boolean[][] dead;
         int[] dirs = new int[]{-1,0,1,0};
-        int skipped = 0;
+        byte obst = STile.WALL_FLAG | STile.BOX_FLAG;
+        int[] skipped = new int[]{0, 0, 0};
+        boolean corral = true;
+        int corralRisk = 0, corralBoxes = 0, corralGoals = 0;
         Map<String, Boolean> freezeCache = new HashMap<>();
+        Map<String, Boolean> corralCache = new HashMap<>();
 
         public DeadSquareDetector(BoardSlim board) {
             this.dead = DeadSquareDetector.detectSimple(board);
         }
-
+        // Detect simple deadlocks (static) - tiles from which a box cannot move, independent of other boxes
         public static boolean[][] detectSimple(BoardSlim board) {
             boolean[][] res = new boolean[board.width()][board.height()];
             // Flood fill for dead squares, starting from each goal
@@ -239,7 +249,11 @@ public class MyAgent extends ArtificialAgent {
             for (int i = 0; i < board.width(); i++) for (int j = 0; j < board.height(); j++) res[i][j] ^= true;
             return res;
         }
-
+        private boolean detectSimple(int x, int y) {
+            boolean res = dead[x][y];
+            if (res) this.skipped[0]++;
+            return res;
+        }
         private static void pull(BoardSlim board, boolean[][] res, int x, int y, int[] dirs) {
             res[x][y] = true;
             for (int i = 0; i < 4; i++) {
@@ -252,7 +266,7 @@ public class MyAgent extends ArtificialAgent {
                 pull(board, res, nx, ny, dirs);
             }
         }
-
+        // Detect freeze deadlocks (dynamic) - tiles from which a box cannot move, depends on other boxes
         public boolean detectFreeze(BoardSlim board, int x, int y, BoxPoint[] boxes) {
             // Return cached config if possible
             String k = Arrays.stream(boxes).map(b -> b.x + "," + b.y + ",").reduce("", String::concat);
@@ -262,11 +276,10 @@ public class MyAgent extends ArtificialAgent {
             detectFreeze(board.clone(), x, y, frozen);
             // If any frozen block is not on goal -> dead state
             boolean res = frozen.stream().anyMatch(b -> (STile.PLACE_FLAG & board.tiles[b.x][b.y]) == 0);
-            if (res) this.skipped++;
+            if (res) this.skipped[1]++;
             freezeCache.put(k, res);
             return res;
         }
-
         private boolean detectFreeze(BoardSlim board, int x, int y, Set<Point> f) {
             // Check if frozen in x- and y-axis
             boolean[] frozen = new boolean[2];
@@ -290,6 +303,46 @@ public class MyAgent extends ArtificialAgent {
                 return true;
             }
             return false;
+        }
+        // Detect corral deadlocks - when pushed box forms a closed unreachable area with not enough goals
+        public boolean detectCorral(BoardSlim board, int x, int y, int dx, int dy, BoxPoint[] boxes) {
+            if (corralRisk == board.boxCount) return false;
+            // Return cached config if possible
+            String k = Arrays.stream(boxes).map(b -> b.x + "," + b.y + ",").reduce("", String::concat);
+            if (corralCache.containsKey(k)) return corralCache.get(k);
+            // If neighboring tiles are not obstacles, cannot form a coral
+            if ((board.tiles[x - dy][y - dx] & obst) == 0 || (board.tiles[x + dy][y + dx] & obst) == 0) return false;
+            if ((board.tiles[x + dx][y + dy] & obst) != 0) return false;
+            corral = true; corralBoxes = 0; corralGoals = 0;
+            floodFill(board, x + dx, y + dy, new boolean[board.width()][board.height()]);
+            // If player or enough goals inside coral, then may be solvable
+            boolean res = corral && corralGoals + corralRisk < corralBoxes;
+            if (res) this.skipped[2]++;
+            corralCache.put(k, res);
+            return res;
+        }
+        private void floodFill(BoardSlim board, int x, int y, boolean[][] seen) {
+            seen[x][y] = true;
+            // Check for player
+            if (STile.isPlayer(board.tiles[x][y])) {
+                corral = false;
+                return;
+            }
+            // Check for goal
+            if ((board.tiles[x][y] & STile.PLACE_FLAG) != 0) corralGoals++;
+            // Check that it is not an obstacle
+            if ((board.tiles[x][y] & obst) != 0) {
+                if ((board.tiles[x][y] & STile.BOX_FLAG) != 0) corralBoxes++;
+                return;
+            }
+            // Continue flooding
+            for (int i = 0; i < 4; i++) {
+                // Check bounds and unvisited
+                int nx = x + dirs[i], ny = y + dirs[(i + 1) % 4];
+                if (nx < 0 || ny < 0 || nx > seen.length - 1 || ny > seen[0].length - 1) continue;
+                if (seen[nx][ny] || !corral) continue;
+                floodFill(board, nx, ny, seen);
+            }
         }
     }
     // Helper that matches each box to its closest goal, taking other matches into account

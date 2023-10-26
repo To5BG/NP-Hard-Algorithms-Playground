@@ -87,7 +87,7 @@ public class SokobanMain {
         int maxFail = 0;
         boolean optimal = false;
         String resultDir = null;
-        int timeout = 4000;
+        int timeout = 8000;
         boolean verbose = true;
 
         for (int i = 0 ; i < args.length ; ++i) {
