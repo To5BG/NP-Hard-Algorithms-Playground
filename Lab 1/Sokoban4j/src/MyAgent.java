@@ -49,13 +49,13 @@ public class MyAgent extends ArtificialAgent {
 
     private List<EDirection> a_star(int maxCost) {
         // Init
-        Map<BoardCompact, Integer> dist = new HashMap<>();
+        Map<Config, Integer> dist = new HashMap<>();
         Queue<Node> q = new PriorityQueue<>();
         Config conf = Config.buildConfig(this.board);
 
-        dist.put(this.board, 0);
+        dist.put(conf, 0);
         q.add(new Node(conf, null, null, 0, h(conf, null,
-                Arrays.stream(conf.boxes).map(b -> (int) b.dist).reduce(0, Integer::sum))));
+                Arrays.stream(conf.boxes).map(b -> b.dist).reduce(0, Integer::sum))));
         Node curr = null;
 
         boolean[][] deadSquares = DeadSquareDetector.detectSimple(this.board);
@@ -96,9 +96,9 @@ public class MyAgent extends ArtificialAgent {
                 }
                 int newCost = curr.g + 1;
                 // Don't consider if it does not improve on previous distance or if it leads to an unsolvable position
-                if (newCost + curr.h >= dist.getOrDefault(next.board, Integer.MAX_VALUE) || (action instanceof CPush &&
+                if (newCost + curr.h >= dist.getOrDefault(next, Integer.MAX_VALUE) || (action instanceof CPush &&
                         Arrays.stream(next.boxes).anyMatch(b -> deadSquares[b.x][b.y]))) continue;
-                dist.put(next.board, newCost);
+                dist.put(next, newCost);
                 q.add(new Node(next, curr, action, newCost, h(next, movedBox, curr.h)));
             }
         }
@@ -169,11 +169,13 @@ public class MyAgent extends ArtificialAgent {
     static class Config implements Cloneable {
         Point[] boxes, goals;
         BoardCompact board;
+        int hash;
 
         public Config(Point[] boxes, Point[] goals, BoardCompact board) {
             this.boxes = boxes;
             this.goals = goals;
             this.board = board;
+            this.hash = -1;
         }
 
         public static Config buildConfig(BoardCompact b) {
@@ -189,6 +191,7 @@ public class MyAgent extends ArtificialAgent {
                 box.dist = goals.stream().map(goal -> Math.abs(box.x - goal.x) + Math.abs(box.y - goal.y))
                         .reduce(Integer.MAX_VALUE, Math::min);
             }
+            boxes.sort((l, r) -> l.x == r.x ? r.y - l.y : r.x - l.x);
             return new Config(boxes.toArray(Point[]::new), goals.toArray(Point[]::new), b);
         }
 
@@ -208,14 +211,32 @@ public class MyAgent extends ArtificialAgent {
 
         public Point moveBox(int x, int y, int tx, int ty) {
             board.moveBox(x, y, tx, ty);
-            Point box = Arrays.stream(boxes).filter(b -> b.x == x && b.y == y).findFirst().orElseThrow();
-            box.x = tx;
-            box.y = ty;
+            Point box = null;
+            for (Point b : boxes) if (b.x == x && b.y == y) {
+                box = b;
+                box.x = tx;
+                box.y = ty;
+                break;
+            }
+            Arrays.sort(boxes, (l, r) -> l.x == r.x ? r.y - l.y : r.x - l.x);
+            hash = -1;
             return box;
         }
 
+        public boolean equals(Object c) {
+            if (!(c instanceof Config)) return false;
+            if (c == this) return true;
+            return this.hashCode() == c.hashCode();
+        }
+
+        public int hashCode() {
+            if (hash != -1) return hash;
+            return hash = (Arrays.stream(boxes).map(b -> b.x + "," + b.y + ",").reduce("", String::concat) +
+                    board.playerX + "," + board.playerY).hashCode();
+        }
+
         public String toString() {
-            return boxes.toString() + " " + goals.toString() + " " + board.toString();
+            return board.toString();
         }
     }
 
