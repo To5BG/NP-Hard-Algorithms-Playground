@@ -21,7 +21,7 @@ public class VariableBind extends Bind {
     }
 
     public List<Integer> applyDomain(Map<?, Object> mapper) {
-        return this.domainF.apply(this.args.stream().map(mapper::get).collect(Collectors.toList()));
+        return this.domainF.apply(this.domainArgs.stream().map(mapper::get).collect(Collectors.toList()));
     }
 }
 

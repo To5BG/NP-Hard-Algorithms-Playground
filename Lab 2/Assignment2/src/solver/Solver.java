@@ -129,20 +129,20 @@ public class Solver<E> {
                     if (prop.l instanceof String)
                         switch ((String) prop.l) {
                             case "alldiff":
-                                if (decision.equals((Integer) prop.r)) break;
-                                domains.compute(var, (k, v) -> {
+                                if (decision.equals(prop.r)) break;
+                                domains.computeIfPresent(var, (k, v) -> {
                                     for (int i = 0; i < v.size(); i++) {
                                         List<Integer> l = v.get(i);
                                         if (isEmpty.get()) break;
                                         if (i == idx) continue;
                                         l.remove(decision);
-                                        if (l.size() == 0) isEmpty.set(true);
+                                        if (l.isEmpty()) isEmpty.set(true);
                                     }
                                     return v;
                                 });
                                 break;
                             case "decrease":
-                                domains.compute(var, (k, v) -> {
+                                domains.computeIfPresent(var, (k, v) -> {
                                     for (int i = 0; i < v.size(); i++) {
                                         List<Integer> l = v.get(i);
                                         if (isEmpty.get()) break;
@@ -160,14 +160,14 @@ public class Solver<E> {
                                     if (isEmpty.get()) break;
                                     if (a.getKey().equals(var)) continue;
                                     a.getValue().get(idx).remove(decision);
-                                    if (a.getValue().get(idx).size() == 0) isEmpty.set(true);
+                                    if (a.getValue().get(idx).isEmpty()) isEmpty.set(true);
                                 }
                                 break;
                             case "hi2":
                                 Integer row = Integer.parseInt(var.split("_")[1]);
                                 Integer s = (int) Math.sqrt((Integer) this.parameters.get("N"));
                                 Integer i1 = row / s;
-                                Integer j1 = idx / s;
+                                int j1 = idx / s;
                                 for (Map.Entry<String, List<List<Integer>>> a : domains.entrySet()) {
                                     if (isEmpty.get()) break;
                                     Integer row2 = Integer.parseInt(a.getKey().split("_")[1]);
@@ -175,7 +175,7 @@ public class Solver<E> {
                                     if (a.getKey().equals(var) || !i2.equals(i1)) continue;
                                     for (int j = j1 * s; j < (j1 + 1) * s; j++) {
                                         a.getValue().get(j).remove(decision);
-                                        if (a.getValue().get(j).size() == 0) isEmpty.set(true);
+                                        if (a.getValue().get(j).isEmpty()) isEmpty.set(true);
                                     }
                                 }
                                 break;

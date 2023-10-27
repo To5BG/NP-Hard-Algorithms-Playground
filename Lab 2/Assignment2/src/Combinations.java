@@ -1,6 +1,4 @@
-import solver.Bind;
 import solver.CSolution;
-import solver.Pair;
 import solver.Problem;
 import solver.Solver;
 import solver.VariableBind;
@@ -27,8 +25,8 @@ public class Combinations {
                 .addGlobalConstraint("comb", "alldiff", -1);
 
         Map<String, Object> model = new HashMap<>();
-        model.put("N", 10);
-        model.put("K", 2);
+        model.put("N", 2);
+        model.put("K", 10);
 
         CSolution<int[]> res = s.solve(model, Problem.ALL, m ->
                 Arrays.stream(m.get("comb")).mapToInt(Integer::intValue).toArray(), null);

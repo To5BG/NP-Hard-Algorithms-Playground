@@ -1,6 +1,4 @@
-import solver.Bind;
 import solver.CSolution;
-import solver.Pair;
 import solver.Problem;
 import solver.Solver;
 import solver.VariableBind;
@@ -65,7 +63,7 @@ public class NQueens {
                 2);
 
         Map<String, Object> model = new HashMap<>();
-        model.put("N", 5);
+        model.put("N", 10);
 
         CSolution<Object> res = s.solve(model, Problem.COUNT, m -> m, null);
 
