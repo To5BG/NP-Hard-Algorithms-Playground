@@ -18,8 +18,8 @@ public class Solver<E> {
     Map<String, Bind> parameterBinds;
     // Binds a parameter name to input values
     public Map<String, Object> parameters;
-    // Binds a variable name to a pair of { domain bind, size bind }
-    Map<String, Pair> variableBinds;
+    // Binds a variable name to a variable bind ({ domain bind, size bind })
+    Map<String, VariableBind> variableBinds;
     // Binds a variable name to wrapper class
     Map<String, Variable> variables;
     // Store variable names separate for optimization
@@ -67,7 +67,7 @@ public class Solver<E> {
         return this;
     }
 
-    public Solver<E> addVariable(String name, Pair value) {
+    public Solver<E> addVariable(String name, VariableBind value) {
         variableBinds.put(name, value);
         return this;
     }
@@ -83,11 +83,10 @@ public class Solver<E> {
         return this;
     }
 
-    public Solver<E> addSymmetryBreaker(BiFunction<Node, Integer, Boolean> checkSymmetry,
-                                        BiFunction<Node, Integer, Integer> calculateCountWeight,
-                                        Integer initialWeight) {
+    public void addSymmetryBreaker(BiFunction<Node, Integer, Boolean> checkSymmetry,
+                                   BiFunction<Node, Integer, Integer> calculateCountWeight,
+                                   Integer initialWeight) {
         symmetries = new SymmetryBreaker(checkSymmetry, calculateCountWeight, initialWeight);
-        return this;
     }
 
     // Loads model by binding input values to parameters
@@ -97,9 +96,10 @@ public class Solver<E> {
             if (e.getValue() == null) parameters.put(e.getKey(), model.get(e.getKey()));
             else parameters.put(e.getKey(), e.getValue().apply(parameters));
         }
-        for (Map.Entry<String, Pair> e : variableBinds.entrySet()) {
-            List<Integer> dom = (List<Integer>) ((Bind) e.getValue().l).apply(parameters);
-            Object val = ((Bind) e.getValue().r).apply(parameters);
+        // Evaluate domain and value
+        for (Map.Entry<String, VariableBind> e : variableBinds.entrySet()) {
+            List<Integer> dom = e.getValue().applyDomain(parameters);
+            Object val = e.getValue().apply(parameters);
             Integer[] v;
             if (val instanceof Integer[]) v = (Integer[]) val;
             else v = new Integer[]{(Integer) val};

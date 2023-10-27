@@ -3,6 +3,7 @@ import solver.CSolution;
 import solver.Pair;
 import solver.Problem;
 import solver.Solver;
+import solver.VariableBind;
 
 import java.util.HashMap;
 import java.util.List;
@@ -14,14 +15,14 @@ import java.util.stream.IntStream;
 
 public class NQueens {
     public static void main(String[] args) {
-        Solver<Object> s = new Solver<Object>()
+        Solver<Object> s = new Solver<>()
                 .addParameter("N", null)
                 // Model board as an n-array, where q[i] = column of queen on ith row
                 // Ensures only one queen per row
-                .addVariable("q", new Pair(
-                        new Bind(List.of("N"), i -> IntStream.range(0,
-                                (Integer) i.get(0)).boxed().collect(Collectors.toList())),
-                        new Bind(List.of("N"), i -> new Integer[(Integer) i.get(0)])))
+                .addVariable("q", new VariableBind(
+                        List.of("N"), i -> IntStream.range(0,
+                        (Integer) i.get(0)).boxed().collect(Collectors.toList()),
+                        List.of("N"), i -> new Integer[(Integer) i.get(0)]))
 
                 // No queens on same column
                 .addGlobalConstraint("q", "alldiff", -1)
@@ -53,11 +54,12 @@ public class NQueens {
         // Symmetry breaker, arguments explained below, small comments on their location among the solver
         s.addSymmetryBreaker(
                 // Checker function -> when branches can be skipped due to symmetry
-                // For this problem, simplest symmetry breaker is enforcing first row queen to be only on the first half ->
-                // Breaks x-axis mirrored solutions
+                // For this problem, simplest symmetry breaker is enforcing first row queen to be
+                // only on the first half -> Breaks x-axis mirrored solutions
                 (nn, j) -> nn.idx == 0 && nn.domain.get(j) > ((Integer) s.parameters.get("N") - 1) / 2,
                 // Weight function -> determine how much should we count each individual symmetrical branch
-                // For this problem, it is always 2, except if we are on the middle column of a board with odd dimensions
+                // For this problem, it is always 2, except if
+                // we are on the middle column of a board with odd dimensions
                 (nn, j) -> Math.min(nn.weight, (nn.idx == 0 && ((Integer) s.parameters.get("N") % 2 != 0) &&
                         (nn.domain.get(j) == ((Integer) s.parameters.get("N") - 1) / 2)) ? 1 : 2),
                 2);

@@ -3,6 +3,7 @@ import solver.CSolution;
 import solver.Pair;
 import solver.Problem;
 import solver.Solver;
+import solver.VariableBind;
 
 import java.util.HashMap;
 import java.util.List;
@@ -13,9 +14,9 @@ public class BinaryStrings {
 
         Solver<String> s = new Solver<String>()
                 .addParameter("N", null)
-                .addVariable("bitstr", new Pair(
-                        new Bind(List.of(), i -> List.of(0, 1)),
-                        new Bind(List.of("N"), i -> new Integer[(Integer) i.get(0)])));
+                .addVariable("bitstr", new VariableBind(
+                        List.of(), i -> List.of(0, 1),
+                        List.of("N"), i -> new Integer[(Integer) i.get(0)]));
 
         Map<String, Object> model = new HashMap<>();
         model.put("N", 20);

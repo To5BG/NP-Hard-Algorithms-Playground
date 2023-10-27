@@ -4,6 +4,7 @@ import solver.Constraint;
 import solver.Pair;
 import solver.Problem;
 import solver.Solver;
+import solver.VariableBind;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -52,14 +53,15 @@ public class Sudoku {
         List<String> fullVar = IntStream.range(0, grid.length).mapToObj(i -> "puzzle_" + i)
                 .collect(Collectors.toList());
 
-        Solver<int[][]> s = new Solver<int[][]>()
+        Solver<int[][]> solver = new Solver<int[][]>()
                 .addParameter("N", null);
 
         for (int i = 0; i < grid.length; i++) {
             int finalI = i;
-            s.addVariable("puzzle_" + i, new Pair(
-                            new Bind(List.of("N"), j -> IntStream.rangeClosed(1, (Integer) j.get(0)).boxed().collect(Collectors.toList())),
-                            new Bind(List.of("N"), j -> new Integer[(Integer) j.get(0)])))
+            solver = solver.addVariable("puzzle_" + i, new VariableBind(
+                            List.of("N"), j -> IntStream.rangeClosed(1, (Integer) j.get(0))
+                            .boxed().collect(Collectors.toList()),
+                            List.of("N"), j -> new Integer[(Integer) j.get(0)]))
 
                     .addGlobalConstraint("puzzle_" + i, (Function<List<Object>, List<List<Integer>>>)
                             l -> {
@@ -81,31 +83,31 @@ public class Sudoku {
                     .addGlobalConstraint("puzzle_" + i, "hi2", -1);
         }
 
-        s.addConstraint(new Constraint(new ArrayList<>(), fullVar, (p, v) -> {
-            for (int i = 0; i < v.size(); i++)
-                for (int j = 0; j < v.size(); j++)
-                    for (int k = j + 1; k < v.size(); k++)
-                        if (v.get(j)[i].equals(v.get(k)[i])) return false;
-            return true;
-        }));
-
-        s.addConstraint(new Constraint(new ArrayList<>(), fullVar, (p, v) -> {
-            int n = (int) Math.sqrt(grid.length);
-            for (int i = 0; i < n; i++)
-                for (int j = 0; j < n; j++) {
-                    int finalJ = j;
-                    List<Integer> section = IntStream.range(i * n, (i + 1) * n).flatMap(i1 ->
-                                    Arrays.stream(grid[i1], finalJ * n, (finalJ + 1) * n))
-                            .filter(nn -> nn != -1).boxed().collect(Collectors.toList());
-                    if (section.stream().distinct().count() != section.size()) return false;
-                }
-            return true;
-        }));//.setVariableSelectionOrder(idx);
+        solver = solver
+                .addConstraint(new Constraint(new ArrayList<>(), fullVar, (p, v) -> {
+                    for (int i = 0; i < v.size(); i++)
+                        for (int j = 0; j < v.size(); j++)
+                            for (int k = j + 1; k < v.size(); k++)
+                                if (v.get(j)[i].equals(v.get(k)[i])) return false;
+                    return true;
+                }))
+                .addConstraint(new Constraint(new ArrayList<>(), fullVar, (p, v) -> {
+                    int n = (int) Math.sqrt(grid.length);
+                    for (int i = 0; i < n; i++)
+                        for (int j = 0; j < n; j++) {
+                            int finalJ = j;
+                            List<Integer> section = IntStream.range(i * n, (i + 1) * n).flatMap(i1 ->
+                                            Arrays.stream(grid[i1], finalJ * n, (finalJ + 1) * n))
+                                    .filter(nn -> nn != -1).boxed().collect(Collectors.toList());
+                            if (section.stream().distinct().count() != section.size()) return false;
+                        }
+                    return true;
+                })).setVariableSelectionOrder(idx);
 
         Map<String, Object> model = new HashMap<>();
         model.put("N", grid.length);
 
-        CSolution<int[][]> res = s.solve(model, Problem.ALL, m ->
+        CSolution<int[][]> res = solver.solve(model, Problem.ALL, m ->
                 IntStream.range(0, grid.length).mapToObj(i ->
                         Arrays.stream(Arrays.copyOf(m.get("puzzle_" + i), grid.length)).mapToInt(Integer::intValue)
                                 .toArray()).toArray(int[][]::new), null);

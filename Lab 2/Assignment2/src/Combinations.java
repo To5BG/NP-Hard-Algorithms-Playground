@@ -3,6 +3,7 @@ import solver.CSolution;
 import solver.Pair;
 import solver.Problem;
 import solver.Solver;
+import solver.VariableBind;
 
 import java.util.Arrays;
 import java.util.HashMap;
@@ -17,10 +18,10 @@ public class Combinations {
                 .addParameter("N", null)
                 .addParameter("K", null)
 
-                .addVariable("comb", new Pair(
-                        new Bind(List.of("N"), i -> IntStream.rangeClosed(1, (Integer) i.get(0))
-                                .boxed().collect(Collectors.toList())),
-                        new Bind(List.of("K"), i -> new Integer[(Integer) i.get(0)])))
+                .addVariable("comb", new VariableBind(
+                        List.of("N"), i -> IntStream.rangeClosed(1, (Integer) i.get(0))
+                        .boxed().collect(Collectors.toList()),
+                        List.of("K"), i -> new Integer[(Integer) i.get(0)]))
 
                 .addGlobalConstraint("comb", "decrease", -1)
                 .addGlobalConstraint("comb", "alldiff", -1);
