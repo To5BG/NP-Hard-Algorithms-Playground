@@ -4,8 +4,11 @@ import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+// Variable wrapper
 public class Variable {
+    // domain of possible values
     List<Integer> domain;
+    // array of possible values
     Integer[] value;
 
     public Variable(List<Integer> domain, Integer[] value, int size) {
@@ -13,6 +16,7 @@ public class Variable {
         this.value = value;
     }
 
+    // all possible values, comma delimited
     public String toString() {
         if (value.length == 1) return "" + value[0];
         StringBuilder r = new StringBuilder("[");
@@ -25,8 +29,12 @@ public class Variable {
     }
 }
 
+// binds string arguments to values based on f
 class Bind {
+    // bound arguments (as string names)
     List<String> args;
+
+    // function to evaluate
     Function<List<Object>, ?> f;
 
     public Bind(List<String> args, Function<List<Object>, ?> f) {
@@ -39,9 +47,15 @@ class Bind {
     }
 }
 
+// Constraint wrapper
 class Constraint {
+    // Parameter arguments
     List<String> parargs;
+
+    // Variable arguments
     List<String> varargs;
+
+    // Constraint function
     BiFunction<List<Object>, List<Integer[]>, Boolean> constr;
 
     public Constraint(List<String> parargs, List<String> varargs,
@@ -58,10 +72,20 @@ class Constraint {
     }
 }
 
+// Symmetry breaker wrapper
 class SymmetryBreaker {
+
+    // Weight of initial search (for instance, if model is built such that each solution counts as two,
+    // then this value should be 2)
     Integer initialWeight;
+
+    // Solver to which this symmetry breaker is bound to
     Solver<?> bind;
+
+    // Function that checks if a symmetry can be broken
     BiFunction<Node, Integer, Boolean> checkSymmetry;
+
+    // Weight function for each branch (how much does each symmetry cut the search space)
     BiFunction<Node, Integer, Integer> calculateCountWeight;
 
     public SymmetryBreaker(Solver<?> bind, BiFunction<Node, Integer, Boolean> checkSymmetry,
@@ -73,6 +97,7 @@ class SymmetryBreaker {
     }
 }
 
+// Types of problems that can be solved
 enum Problem {
     SATISFY,
     COUNT,
