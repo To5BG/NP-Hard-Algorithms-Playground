@@ -43,13 +43,14 @@ public class MyAgent extends ArtificialAgent {
         this.dsd = new DeadSquareDetector(this.board);
 
         // Start from 1 (or higher) for less risky solver
-        int corralRisk = 0, maxCost = 500;
+        int corralRisk = 0, corralStep = 1, maxCost = 500;
         long searchStartMillis = System.currentTimeMillis();
         while (corralRisk <= this.board.boxCount) {
             // Clear cache from old corrals
             dsd.corralCache = dsd.corralCache.entrySet().stream().filter(e -> !e.getValue())
                     .collect(Collectors.toMap(Map.Entry::getKey, stringBooleanEntry -> false));
-            List<EDirection> result = a_star(maxCost, corralRisk++); // depth of search tree
+            List<EDirection> result = a_star(maxCost, corralRisk); // depth of search tree
+            corralRisk += corralStep;
             if (result == null) continue;
             long searchTime = System.currentTimeMillis() - searchStartMillis;
             if (verbose) {
@@ -133,9 +134,9 @@ public class MyAgent extends ArtificialAgent {
 
         // greedy matching
         // If distance to best goal gets large, update matching
-//         Point bestGoal = goals.get(changed.closestGoalId);
-//         int newDist = Math.abs(bestGoal.x - changed.x) + Math.abs(bestGoal.y - changed.y);
-//         for (BoxPoint b : boxes) if (b.dist < newDist) return greedyMatching(boxes, goals);
+//        Point bestGoal = goals.get(changed.closestGoalId);
+//        int newDist = Math.abs(bestGoal.x - changed.x) + Math.abs(bestGoal.y - changed.y);
+//        for (BoxPoint b : boxes) if (b.dist < newDist) return greedyMatching(boxes, goals);
 
         // closest matching
         // update the closest matching
