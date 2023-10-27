@@ -1,3 +1,5 @@
+package solver;
+
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -11,38 +13,51 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-class Solver<E> {
-    Map<String, Bind> parametersb;
-    Map<String, Object> parameters;
-    Map<String, Pair> variablesb;
+public class Solver<E> {
+    // Binds a parameter name to a bind for its value
+    Map<String, Bind> parameterBinds;
+    // Binds a parameter name to input values
+    public Map<String, Object> parameters;
+    // Binds a variable name to a pair of { domain bind, size bind }
+    Map<String, Pair> variableBinds;
+    // Binds a variable name to wrapper class
     Map<String, Variable> variables;
-    List<String> varnames;
+    // Store variable names separate for optimization
+    List<String> variableNames;
+    // List of constraints to apply
     List<Constraint> constraints;
-    Map<String, List<Pair>> globalConstr;
+    // List of global constraints to apply
+    Map<String, List<Pair>> globalConstraints;
+    // Starting node root
     Node root;
-    Integer total;
+    //
+    Integer total, minmaxScore;
+    // Type of problem to solve
     Problem solType;
+    // Solution object - cache in case of repetitive solver queries
     CSolution<E> sol;
+    // Transform solved variables in desired form
     Function<Map<String, Integer[]>, E> transform;
+    // Evaluate weight in case of MIN/MAX solve
     Function<E, Integer> eval;
-    Integer minmaxScore;
+    // List of decisions to take
     List<Integer> decisions;
+    // Bound symmetry breaker
     SymmetryBreaker symmetries;
 
-    long time;
     public Solver() {
-        this.parametersb = new HashMap<>();
-        this.variablesb = new HashMap<>();
+        this.parameterBinds = new HashMap<>();
+        this.variableBinds = new HashMap<>();
         this.parameters = new HashMap<>();
         this.variables = new HashMap<>();
-        this.varnames = new ArrayList<>();
+        this.variableNames = new ArrayList<>();
         this.constraints = new ArrayList<>();
-        this.globalConstr = new HashMap<>();
+        this.globalConstraints = new HashMap<>();
         this.solType = null;
     }
 
     public Solver<E> addParameter(String name, Bind p) {
-        this.parametersb.put(name, p);
+        this.parameterBinds.put(name, p);
         return this;
     }
 
@@ -53,7 +68,7 @@ class Solver<E> {
     }
 
     public Solver<E> addVariable(String name, Pair value) {
-        variablesb.put(name, value);
+        variableBinds.put(name, value);
         return this;
     }
 
@@ -63,56 +78,52 @@ class Solver<E> {
     }
 
     public Solver<E> addGlobalConstraint(String var, Object propType, Integer arg) {
-        if (!globalConstr.containsKey(var)) globalConstr.put(var, new ArrayList<>());
-        globalConstr.get(var).add(new Pair(propType, arg));
+        if (!globalConstraints.containsKey(var)) globalConstraints.put(var, new ArrayList<>());
+        globalConstraints.get(var).add(new Pair(propType, arg));
         return this;
     }
 
     public Solver<E> addSymmetryBreaker(BiFunction<Node, Integer, Boolean> checkSymmetry,
                                         BiFunction<Node, Integer, Integer> calculateCountWeight,
                                         Integer initialWeight) {
-        symmetries = new SymmetryBreaker(this, checkSymmetry, calculateCountWeight, initialWeight);
+        symmetries = new SymmetryBreaker(checkSymmetry, calculateCountWeight, initialWeight);
         return this;
     }
 
+    // Loads model by binding input values to parameters
     private void loadModel(Map<String, Object> model) {
-        for (Map.Entry<String, Bind> e : parametersb.entrySet()) {
+        // If bind is null, simply set value, else evaluate value with a function
+        for (Map.Entry<String, Bind> e : parameterBinds.entrySet()) {
             if (e.getValue() == null) parameters.put(e.getKey(), model.get(e.getKey()));
             else parameters.put(e.getKey(), e.getValue().apply(parameters));
         }
-        for (Map.Entry<String, Pair> e : variablesb.entrySet()) {
+        for (Map.Entry<String, Pair> e : variableBinds.entrySet()) {
             List<Integer> dom = (List<Integer>) ((Bind) e.getValue().l).apply(parameters);
             Object val = ((Bind) e.getValue().r).apply(parameters);
             Integer[] v;
-            int s;
-            if (val instanceof Integer[]) {
-                v = (Integer[]) val;
-                s = ((Integer[]) val).length;
-            } else {
-                v = new Integer[]{(Integer) val};
-                s = 1;
-            }
+            if (val instanceof Integer[]) v = (Integer[]) val;
+            else v = new Integer[]{(Integer) val};
             Arrays.fill(v, Integer.MIN_VALUE);
-            variables.put(e.getKey(), new Variable(dom, v, s));
-            varnames.add(e.getKey());
+            variables.put(e.getKey(), new Variable(dom, v));
+            variableNames.add(e.getKey());
         }
     }
 
     private Pair getNext(int s) {
         int a = 0, i = 0;
         while (true) {
-            if (i == this.varnames.size()) break;
-            int next = this.variables.get(this.varnames.get(i++)).value.length;
+            if (i == this.variableNames.size()) break;
+            int next = this.variables.get(this.variableNames.get(i++)).value.length;
             if (a + next > s) break;
             a += next;
         }
-        String name = this.varnames.get(i - 1);
+        String name = this.variableNames.get(i - 1);
         return new Pair(name, s - a);
     }
 
     private boolean propagate(String var, Integer idx, Integer decision, Map<String, List<List<Integer>>> domains) {
         AtomicBoolean isEmpty = new AtomicBoolean(false);
-        for (Map.Entry<String, List<Pair>> e : this.globalConstr.entrySet()) {
+        for (Map.Entry<String, List<Pair>> e : this.globalConstraints.entrySet()) {
             if (e.getKey().equals(var))
                 for (Pair prop : e.getValue()) {
                     if (prop.l instanceof String)
@@ -120,14 +131,14 @@ class Solver<E> {
                             case "alldiff":
                                 if (decision.equals((Integer) prop.r)) break;
                                 domains.compute(var, (k, v) -> {
-                                        for (int i = 0; i < v.size(); i++) {
-                                            List<Integer> l = v.get(i);
-                                            if (isEmpty.get()) break;
-                                            if (i == idx) continue;
-                                            l.remove(decision);
-                                            if (l.size() == 0) isEmpty.set(true);
-                                        }
-                                        return v;
+                                    for (int i = 0; i < v.size(); i++) {
+                                        List<Integer> l = v.get(i);
+                                        if (isEmpty.get()) break;
+                                        if (i == idx) continue;
+                                        l.remove(decision);
+                                        if (l.size() == 0) isEmpty.set(true);
+                                    }
+                                    return v;
                                 });
                                 break;
                             case "decrease":
@@ -215,6 +226,7 @@ class Solver<E> {
 
     public CSolution<E> solve(Map<String, Object> model, Problem sol, Function<Map<String, Integer[]>, E> transform,
                               Function<E, Integer> eval) {
+        // If already computed, return old solution
         if (this.sol != null && this.solType != sol) return this.sol;
         loadModel(model);
         this.solType = sol;
@@ -238,7 +250,7 @@ class Solver<E> {
         Map<String, Integer[]> init = this.variables.entrySet().stream().collect(
                 Collectors.toMap(Map.Entry::getKey, i -> i.getValue().value));
         solve(this.root, init, 0);
-        System.out.println(System.currentTimeMillis() - a);
+        System.out.println("Solved in: " + (System.currentTimeMillis() - a) + "ms");
         return this.sol;
     }
 
@@ -283,38 +295,5 @@ class Solver<E> {
             });
             solve(curr.children.remove(0), m, level + 1);
         }
-    }
-}
-
-class Node {
-    Node parent;
-    String nextValDecision;
-    Integer idx;
-    List<Integer> domain;
-    List<Node> children;
-    Integer weight;
-
-    public Node(Node parent) {
-        this.parent = parent;
-        this.children = new ArrayList<>();
-    }
-}
-
-class CSolution<T> {
-    ArrayList<T> solutions;
-    Integer count;
-
-    public CSolution() {
-        this.solutions = new ArrayList<>();
-        this.count = 0;
-    }
-}
-
-class Pair {
-    Object l, r;
-
-    public Pair(Object l, Object r) {
-        this.l = l;
-        this.r = r;
     }
 }
