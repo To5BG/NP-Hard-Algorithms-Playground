@@ -7,6 +7,7 @@ import java.util.stream.Collectors;
 
 // binds string arguments to values based on f
 public class VariableBind extends Bind {
+
     // bound arguments (as string names)
     List<String> domainArgs;
 

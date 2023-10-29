@@ -4,6 +4,7 @@ import java.util.List;
 
 // Variable wrapper
 public class Variable {
+
     // domain of possible values
     List<Integer> domain;
     // array of possible values
