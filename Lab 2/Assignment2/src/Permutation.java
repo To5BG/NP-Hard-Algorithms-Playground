@@ -20,7 +20,7 @@ public class Permutation {
                         .boxed().collect(Collectors.toList()),
                         List.of("N"), i -> new Integer[(Integer) i.get(0)]))
 
-                .addGlobalConstraint("comb", "alldiff", -1);
+                .addConstraint("comb", "alldiff", -1);
 
         Map<String, Object> model = new HashMap<>();
         model.put("N", 5);

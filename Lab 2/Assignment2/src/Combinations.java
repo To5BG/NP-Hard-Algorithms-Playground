@@ -21,12 +21,13 @@ public class Combinations {
                         .boxed().collect(Collectors.toList()),
                         List.of("K"), i -> new Integer[(Integer) i.get(0)]))
 
-                .addGlobalConstraint("comb", "decrease", -1)
-                .addGlobalConstraint("comb", "alldiff", -1);
+                .addConstraint("comb", "decrease", -1)
+                // remove to allow repetitions
+                .addConstraint("comb", "alldiff", -1);
 
         Map<String, Object> model = new HashMap<>();
-        model.put("N", 2);
-        model.put("K", 10);
+        model.put("N", 10);
+        model.put("K", 2);
 
         CSolution<int[]> res = s.solve(model, Problem.ALL, m ->
                 Arrays.stream(m.get("comb")).mapToInt(Integer::intValue).toArray(), null);

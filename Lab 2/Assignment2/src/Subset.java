@@ -20,8 +20,8 @@ public class Subset {
                         .boxed().collect(Collectors.toList()),
                         List.of("N"), i -> new Integer[(Integer) i.get(0)]))
 
-                .addGlobalConstraint("comb", "alldiff", 0)
-                .addGlobalConstraint("comb", "decrease", -1);
+                .addConstraint("comb", "alldiff", 0)
+                .addConstraint("comb", "decrease", -1);
 
         Map<String, Object> model = new HashMap<>();
         model.put("N", 10);

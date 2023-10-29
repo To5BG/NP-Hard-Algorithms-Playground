@@ -1,6 +1,7 @@
 import solver.CSolution;
 import solver.Constraint;
 import solver.Problem;
+import solver.PropagatorFunction;
 import solver.Solver;
 import solver.VariableBind;
 
@@ -9,8 +10,6 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -56,40 +55,45 @@ public class Sudoku {
 
         for (int i = 0; i < grid.length; i++) {
             int finalI = i;
+            PropagatorFunction somePropagatorThatIdoNotKnow = new PropagatorFunction() {
+                @Override
+                public Boolean apply(Map<String, Object> params, String var, Integer idx, Integer decision,
+                                     Map<String, List<List<Integer>>> domains) {
+                    domains.computeIfPresent(var, (k, v) -> {
+                        for (int ii = 0; ii < v.size(); ii++) {
+                            if (ii == idx) continue;
+                            if (grid[finalI][ii] != -1) {
+                                List<Integer> newDomain = new ArrayList<>();
+                                newDomain.add(grid[finalI][ii]);
+                                v.set(ii, newDomain);
+                            }
+                        }
+                        return v;
+                    });
+                    return false;
+                }
+            };
+
             solver = solver.addVariable("puzzle_" + i, new VariableBind(
                             List.of("N"), j -> IntStream.rangeClosed(1, (Integer) j.get(0))
                             .boxed().collect(Collectors.toList()),
                             List.of("N"), j -> new Integer[(Integer) j.get(0)]))
 
-                    .addGlobalConstraint("puzzle_" + i, (Function<List<Object>, List<List<Integer>>>)
-                            l -> {
-                                List<List<Integer>> v = (List<List<Integer>>) l.get(1);
-                                for (int ii = 0; ii < v.size(); ii++) {
-                                    if (((AtomicBoolean) l.get(4)).get()) break;
-                                    if (ii == (Integer) l.get(2)) continue;
-                                    if (grid[finalI][ii] != -1) {
-                                        List<Integer> newDomain = new ArrayList<>();
-                                        newDomain.add(grid[finalI][ii]);
-                                        v.set(ii, newDomain);
-                                    }
-                                }
-                                return v;
-                            }, -1)
-
-                    .addGlobalConstraint("puzzle_" + i, "alldiff", -1)
-                    .addGlobalConstraint("puzzle_" + i, "hi", -1)
-                    .addGlobalConstraint("puzzle_" + i, "hi2", -1);
+                    .addConstraint("puzzle_" + i, somePropagatorThatIdoNotKnow)
+                    .addConstraint("puzzle_" + i, "alldiff", -1)
+                    .addConstraint("puzzle_" + i, "hi", -1)
+                    .addConstraint("puzzle_" + i, "hi2", -1);
         }
 
         solver = solver
-                .addConstraint(new Constraint(new ArrayList<>(), fullVar, (p, v) -> {
+                .addConstraint(new Constraint(List.of(), fullVar, (p, v) -> {
                     for (int i = 0; i < v.size(); i++)
                         for (int j = 0; j < v.size(); j++)
                             for (int k = j + 1; k < v.size(); k++)
                                 if (v.get(j)[i].equals(v.get(k)[i])) return false;
                     return true;
-                }))
-                .addConstraint(new Constraint(new ArrayList<>(), fullVar, (p, v) -> {
+                }, null))
+                .addConstraint(new Constraint(List.of(), fullVar, (p, v) -> {
                     int n = (int) Math.sqrt(grid.length);
                     for (int i = 0; i < n; i++)
                         for (int j = 0; j < n; j++) {
@@ -100,7 +104,7 @@ public class Sudoku {
                             if (section.stream().distinct().count() != section.size()) return false;
                         }
                     return true;
-                })).setVariableSelectionOrder(idx);
+                }, null)); //.setVariableSelectionOrder(idx);
 
         Map<String, Object> model = new HashMap<>();
         model.put("N", grid.length);
