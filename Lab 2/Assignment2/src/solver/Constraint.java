@@ -7,25 +7,39 @@ import java.util.stream.Collectors;
 
 // Constraint wrapper
 public class Constraint {
+
     // Parameter arguments
-    List<String> parargs;
+    List<String> parameterNames;
 
     // Variable arguments
-    List<String> varargs;
+    List<String> variableNames;
 
-    // Constraint function
+    // Constraint function ((parameters, variable values) -> does it satisfy)
     BiFunction<List<Object>, List<Integer[]>, Boolean> constr;
 
-    public Constraint(List<String> parargs, List<String> varargs,
-                      BiFunction<List<Object>, List<Integer[]>, Boolean> constr) {
-        this.parargs = parargs;
-        this.varargs = varargs;
+    // Propagation function ((parameters, variables, element index, domain value, full domain) -> can you propagate)
+    PropagatorFunction propFunc;
+
+    public Constraint(List<String> parameterNames, List<String> variableNames,
+                      BiFunction<List<Object>, List<Integer[]>, Boolean> constr, PropagatorFunction propFunc) {
+        this.parameterNames = parameterNames;
+        this.variableNames = variableNames;
         this.constr = constr;
+        this.propFunc = propFunc;
+    }
+
+    public Constraint(String variable, PropagatorFunction pf) {
+        this(List.of(), List.of(variable), null, pf);
+    }
+
+    public Constraint(String variable, String builtinConstraint, int arg) {
+        this(List.of(), List.of(variable), null, ConstraintPropagators.get(builtinConstraint, arg));
     }
 
     public boolean apply(Map<String, Object> par, Map<String, Integer[]> var) {
+        if (this.constr == null) return true;
         return this.constr.apply(
-                this.parargs.stream().map(par::get).collect(Collectors.toList()),
-                this.varargs.stream().map(var::get).collect(Collectors.toList()));
+                this.parameterNames.stream().map(par::get).collect(Collectors.toList()),
+                this.variableNames.stream().map(var::get).collect(Collectors.toList()));
     }
 }
