@@ -1,9 +1,7 @@
 package solver;
 
 import java.util.Arrays;
-import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class ConstraintPropagators {
@@ -79,11 +77,13 @@ public class ConstraintPropagators {
             @Override
             public Boolean apply(Map<String, Object> params, String var, Integer idx, Integer decision,
                                  Map<String, Integer[][]> domains) {
-//                for (Map.Entry<String, List<List<Integer>>> a : domains.entrySet()) {
-//                    if (a.getKey().equals(var)) continue;
-//                    a.getValue().get(idx).remove(decision);
-//                    if (a.getValue().get(idx).isEmpty()) return true;
-//                }
+                for (Map.Entry<String, Integer[][]> a : domains.entrySet()) {
+                    if (a.getKey().equals(var)) continue;
+                    Integer[] aa = a.getValue()[idx];
+                    for (int i = 0; i < aa.length; i++)
+                        if (aa[i].equals(decision)) aa[i] = Integer.MIN_VALUE;
+                    if (Arrays.stream(aa).noneMatch(i -> i != Integer.MIN_VALUE)) return true;
+                }
                 return false;
             }
         };
@@ -94,20 +94,22 @@ public class ConstraintPropagators {
             @Override
             public Boolean apply(Map<String, Object> params, String var, Integer idx, Integer decision,
                                  Map<String, Integer[][]> domains) {
-//                Integer row = Integer.parseInt(var.split("_")[1]);
-//                Integer n = (Integer) params.get("N");
-//                Integer s = (int) Math.sqrt(n);
-//                Integer i1 = row / s;
-//                int j1 = idx / s;
-//                for (Map.Entry<String, List<List<Integer>>> a : domains.entrySet()) {
-//                    Integer row2 = Integer.parseInt(a.getKey().split("_")[1]);
-//                    Integer i2 = row2 / s;
-//                    if (a.getKey().equals(var) || !i2.equals(i1)) continue;
-//                    for (int j = j1 * s; j < (j1 + 1) * s; j++) {
-//                        a.getValue().get(j).remove(decision);
-//                        if (a.getValue().get(j).isEmpty()) return true;
-//                    }
-//                }
+                Integer row = Integer.parseInt(var.split("_")[1]);
+                Integer n = (Integer) params.get("N");
+                Integer s = (int) Math.sqrt(n);
+                Integer i1 = row / s;
+                int j1 = idx / s;
+                for (Map.Entry<String, Integer[][]> a : domains.entrySet()) {
+                    Integer row2 = Integer.parseInt(a.getKey().split("_")[1]);
+                    Integer i2 = row2 / s;
+                    if (a.getKey().equals(var) || !i2.equals(i1)) continue;
+                    for (int j = j1 * s; j < (j1 + 1) * s; j++) {
+                        Integer[] aa = a.getValue()[j];
+                        for (int k = 0; k < aa.length; k++)
+                            if (aa[k].equals(decision)) aa[k] = Integer.MIN_VALUE;
+                        if (Arrays.stream(aa).noneMatch(i -> i != Integer.MIN_VALUE)) return true;
+                    }
+                }
                 return false;
             }
         };

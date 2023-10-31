@@ -2,11 +2,9 @@ package solver;
 
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -224,17 +222,19 @@ public class Solver<E> {
         }
         else {
             if (curr.domain == null) return;
-            int t = 0;
+            int nextChild = 0;
             // for each of the remaining domains
-            for (AtomicInteger i = new AtomicInteger(0); i.get() < curr.domain.length; i.getAndIncrement()) {
-                if (curr.domain[i.get()] == Integer.MIN_VALUE) continue;
+            for (int i = 0; i < curr.domain.length; i++) {
+                if (curr.domain[i] == Integer.MIN_VALUE) continue;
+                if (nextChild >= curr.children.size()) break;
                 // get domain of next variable
+                int finalI = i;
                 pickedValues.computeIfPresent(curr.nextVarDecision, (varName, varValue) -> {
-                    varValue[curr.elementIndex] = curr.domain[i.get()];
+                    varValue[curr.elementIndex] = curr.domain[finalI];
                     return varValue;
                 });
                 // and solve for that
-                solve(curr.children.get(t++), pickedValues, level + 1);
+                solve(curr.children.get(nextChild++), pickedValues, level + 1);
             }
         }
     }

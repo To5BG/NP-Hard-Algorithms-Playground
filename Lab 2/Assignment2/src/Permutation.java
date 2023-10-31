@@ -30,7 +30,7 @@ public class Permutation {
 
         System.out.println("=====SOLUTION=====");
         System.out.println(res.count);
-        for (int[] i : res.solutions)
-            System.out.println(Arrays.stream(i).mapToObj(ii -> ii + ",").reduce("", String::concat));
+        //for (int[] i : res.solutions)
+        //    System.out.println(Arrays.stream(i).mapToObj(ii -> ii + ",").reduce("", String::concat));
     }
 }
