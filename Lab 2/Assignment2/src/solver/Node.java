@@ -9,7 +9,7 @@ public class Node {
     public Node parent;
     public String nextVarDecision;
     public Integer elementIndex;
-    public List<Integer> domain;
+    public Integer[] domain;
     public List<Node> children;
     public Integer weight;
 

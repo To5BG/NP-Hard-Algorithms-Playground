@@ -1,6 +1,6 @@
 package solver;
 
-import java.util.function.BiFunction;
+import java.util.Map;
 
 // Symmetry breaker wrapper
 class SymmetryBreaker {
@@ -9,15 +9,15 @@ class SymmetryBreaker {
     // then this value should be 2)
     Integer initialWeight;
 
-    // Function that checks if a symmetry can be broken
-    BiFunction<Node, Integer, Boolean> checkSymmetry;
+    // Symmetry check function ((node, decision) -> is it a symmetrical state)
+    TriFunction<Node, Integer, Map<String, Object>, Boolean> checkSymmetry;
 
-    // Weight function for each branch (how much does each symmetry cut the search space)
-    BiFunction<Node, Integer, Integer> calculateCountWeight;
+    // Weight function ((node, decision) -> weight of current state/how many symmetries does it break)
+    TriFunction<Node, Integer, Map<String, Object>, Integer> calculateCountWeight;
 
-    public SymmetryBreaker(BiFunction<Node, Integer, Boolean> checkSymmetry,
-                           BiFunction<Node, Integer, Integer> calculateCountWeight, Integer initialWeight) {
-        //this.bind = bind;
+    public SymmetryBreaker(TriFunction<Node, Integer, Map<String, Object>, Boolean> checkSymmetry,
+                           TriFunction<Node, Integer, Map<String, Object>, Integer> calculateCountWeight,
+                           Integer initialWeight) {
         this.checkSymmetry = checkSymmetry;
         this.calculateCountWeight = calculateCountWeight;
         this.initialWeight = initialWeight;

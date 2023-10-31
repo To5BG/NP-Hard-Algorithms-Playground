@@ -26,7 +26,7 @@ public class Combinations {
                 .addConstraint("comb", "alldiff", -1);
 
         Map<String, Object> model = new HashMap<>();
-        model.put("N", 10);
+        model.put("N", 1000);
         model.put("K", 2);
 
         CSolution<int[]> res = s.solve(model, Problem.ALL, m ->
@@ -34,7 +34,7 @@ public class Combinations {
 
         System.out.println("=====SOLUTION=====");
         System.out.println(res.count);
-        for (int[] i : res.solutions)
-            System.out.println(Arrays.stream(i).mapToObj(ii -> ii + ",").reduce("", String::concat));
+        //for (int[] i : res.solutions)
+        //    System.out.println(Arrays.stream(i).mapToObj(ii -> ii + ",").reduce("", String::concat));
     }
 }

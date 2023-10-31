@@ -7,7 +7,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -17,7 +16,7 @@ public class Solver<E> {
     // Binds a parameter name to a bind for its value
     Map<String, Bind> parameterBinds;
     // Binds a parameter name to input values
-    public Map<String, Object> parameters;
+    Map<String, Object> parameters;
     // Binds a variable name to a variable bind ({ domain bind, size bind })
     Map<String, VariableBind> variableBinds;
     // Binds a variable name to wrapper class
@@ -77,14 +76,15 @@ public class Solver<E> {
         return this;
     }
 
-    public void addSymmetryBreaker(BiFunction<Node, Integer, Boolean> checkSymmetry,
-                                   BiFunction<Node, Integer, Integer> calculateCountWeight,
+    public void addSymmetryBreaker(TriFunction<Node, Integer, Map<String, Object>, Boolean> checkSymmetry,
+                                   TriFunction<Node, Integer, Map<String, Object>, Integer> calculateCountWeight,
                                    Integer initialWeight) {
         sym = new SymmetryBreaker(checkSymmetry, calculateCountWeight, initialWeight);
     }
 
     // Loads model by binding input values to parameters and variables
     private void loadModel(Map<String, Object> model) {
+        this.total = 0;
         // If bind is null, simply set value, else evaluate value with a function
         for (Map.Entry<String, Bind> e : parameterBinds.entrySet()) {
             if (e.getValue() == null) parameters.put(e.getKey(), model.get(e.getKey()));
@@ -97,6 +97,7 @@ public class Solver<E> {
             Integer[] v;
             if (val instanceof Integer[]) v = (Integer[]) val;
             else v = new Integer[]{(Integer) val};
+            this.total += v.length;
             Arrays.fill(v, Integer.MIN_VALUE);
             variables.put(e.getKey(), new Variable(dom, v));
             variableNames.add(e.getKey());
@@ -104,11 +105,13 @@ public class Solver<E> {
     }
 
     // Propagate all constraints that have a propagator
-    private boolean propagate(String var, Integer idx, Integer decision, Map<String, List<List<Integer>>> domains) {
+    private boolean propagate(String var, Integer idx, Integer decision, Map<String, Integer[][]> domains) {
         boolean isEmpty = false;
-        for (Constraint e : this.constraints)
-            if (!isEmpty && e.variableNames.contains(var) && e.propFunc != null)
+        for (Constraint e : this.constraints) {
+            if (isEmpty) break;
+            if (e.variableNames.contains(var) && e.propFunc != null)
                 isEmpty = e.propFunc.apply(this.parameters, var, idx, decision, domains);
+        }
         return isEmpty;
     }
 
@@ -125,7 +128,7 @@ public class Solver<E> {
         return new Pair(name, s - varIndex);
     }
 
-    private Node buildTree(Node par, int next, Map<String, List<List<Integer>>> domains, boolean isEmpty, int w) {
+    private Node buildTree(Node par, int next, Map<String, Integer[][]> domains, boolean isEmpty, int w) {
         Node curr = new Node(par);
         curr.weight = w;
         // child node -> all decisions done
@@ -135,19 +138,21 @@ public class Solver<E> {
         curr.nextVarDecision = (String) currPair.l;
         curr.elementIndex = (Integer) currPair.r;
         // clone domain
-        curr.domain = new ArrayList<>(domains.get(curr.nextVarDecision).get(curr.elementIndex));
+        Integer[] oldDomain = domains.get(curr.nextVarDecision)[curr.elementIndex];
+        curr.domain = Arrays.copyOf(oldDomain, oldDomain.length);
         // for each element in domain
-        for (int i = 0; i < curr.domain.size(); i++) {
+        for (int i = 0; i < curr.domain.length; i++) {
+            if (curr.domain[i] == Integer.MIN_VALUE) continue;
             // if symmetric, skip tree generation
-            if (sym != null && sym.checkSymmetry.apply(curr, i)) continue;
+            if (sym != null && sym.checkSymmetry.apply(curr, i, this.parameters)) continue;
             // clone domain again? TODO: look into that for optimization, I assume shallow clones would also work
-            Map<String, List<List<Integer>>> ndomain = domains.entrySet().stream()
-                    .collect(Collectors.toMap(Map.Entry::getKey, v -> v.getValue()
-                            .stream().map(ArrayList::new).collect(Collectors.toList())));
+            Map<String, Integer[][]> newDomain = domains.entrySet().stream()
+                    .collect(Collectors.toMap(Map.Entry::getKey, v -> Arrays.stream(v.getValue())
+                            .map(arr -> Arrays.copyOf(arr, arr.length)).toArray(Integer[][]::new)));
             // build successor tree, and add as child
-            curr.children.add(buildTree(curr, next + 1, ndomain,
-                    propagate(curr.nextVarDecision, curr.elementIndex, curr.domain.get(i), ndomain),
-                    (sym == null) ? curr.weight : sym.calculateCountWeight.apply(curr, i)));
+            curr.children.add(buildTree(curr, next + 1, newDomain,
+                    propagate(curr.nextVarDecision, curr.elementIndex, curr.domain[i], newDomain),
+                    (sym == null) ? curr.weight : sym.calculateCountWeight.apply(curr, i, this.parameters)));
         }
         return curr;
     }
@@ -162,21 +167,20 @@ public class Solver<E> {
         this.transform = transform;
         this.eval = eval;
         this.best = (this.solType == Problem.MAX) ? Integer.MIN_VALUE : Integer.MAX_VALUE;
-        this.total = variables.values().stream().map(v -> v.value.length).reduce(0, Integer::sum);
         this.decisions = IntStream.range(0, total).boxed().collect(Collectors.toList());
         // Randomize decision
-        Collections.shuffle(this.decisions);
+        //Collections.shuffle(this.decisions);
         // map variable names to possible domains, for every single list element
-        Map<String, List<List<Integer>>> domain = this.variables.entrySet().stream()
+        Map<String, Integer[][]> domains = this.variables.entrySet().stream()
                 .collect(Collectors.toMap(Map.Entry::getKey, e -> {
                     Variable var = e.getValue();
-                    return IntStream.range(0, var.value.length).mapToObj(i -> new ArrayList<>(var.domain))
-                            .collect(Collectors.toList());
+                    return IntStream.range(0, var.value.length).mapToObj(i -> var.domain.toArray(Integer[]::new))
+                            .toArray(Integer[][]::new);
                 }));
         // track solve time
         long time = System.currentTimeMillis();
         // build the tree to traverse
-        this.root = buildTree(null, 0, domain, false, (sym == null) ? 1 : sym.initialWeight);
+        this.root = buildTree(null, 0, domains, false, (sym == null) ? 1 : sym.initialWeight);
         // map variable names to initial values
         Map<String, Integer[]> init = this.variables.entrySet().stream().collect(
                 Collectors.toMap(Map.Entry::getKey, i -> i.getValue().value));
@@ -209,8 +213,7 @@ public class Solver<E> {
                     case MIN:
                     case MAX:
                         Integer scr = this.eval.apply(transformed);
-                        boolean check = (this.solType == Problem.MIN) ? scr < this.best : scr > this.best;
-                        if (check) {
+                        if ((this.solType == Problem.MIN) ? scr < this.best : scr > this.best) {
                             this.sol.solutions.set(0, transformed);
                             this.best = scr;
                         }
@@ -219,16 +222,20 @@ public class Solver<E> {
             }
             this.sol.count += curr.weight;
         }
-        int t = curr.children.size();
-        // for each of the remaining domains
-        for (AtomicInteger i = new AtomicInteger(0); i.get() < t; i.getAndIncrement()) {
-            // get domain of next variable
-            pickedValues.computeIfPresent(curr.nextVarDecision, (varName, varValue) -> {
-                varValue[curr.elementIndex] = curr.domain.get(i.get());
-                return varValue;
-            });
-            // and solve for that
-            solve(curr.children.remove(0), pickedValues, level + 1);
+        else {
+            if (curr.domain == null) return;
+            int t = 0;
+            // for each of the remaining domains
+            for (AtomicInteger i = new AtomicInteger(0); i.get() < curr.domain.length; i.getAndIncrement()) {
+                if (curr.domain[i.get()] == Integer.MIN_VALUE) continue;
+                // get domain of next variable
+                pickedValues.computeIfPresent(curr.nextVarDecision, (varName, varValue) -> {
+                    varValue[curr.elementIndex] = curr.domain[i.get()];
+                    return varValue;
+                });
+                // and solve for that
+                solve(curr.children.get(t++), pickedValues, level + 1);
+            }
         }
     }
 }
