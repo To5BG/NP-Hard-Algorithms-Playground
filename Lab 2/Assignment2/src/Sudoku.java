@@ -104,7 +104,7 @@ public class Sudoku {
                             if (section.stream().distinct().count() != section.size()) return false;
                         }
                     return true;
-                }, null)); //.setVariableSelectionOrder(idx);
+                }, null));
 
         Map<String, Object> model = new HashMap<>();
         model.put("N", grid.length);

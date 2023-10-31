@@ -6,7 +6,6 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiFunction;
 import java.util.function.Function;
@@ -42,7 +41,7 @@ public class Solver<E> {
     // List of decisions to take
     List<Integer> decisions;
     // Bound symmetry breaker
-    SymmetryBreaker symmetries;
+    SymmetryBreaker sym;
 
     public Solver() {
         this.parameterBinds = new HashMap<>();
@@ -51,17 +50,10 @@ public class Solver<E> {
         this.variables = new HashMap<>();
         this.variableNames = new ArrayList<>();
         this.constraints = new ArrayList<>();
-        this.solType = null;
     }
 
     public Solver<E> addParameter(String name, Bind p) {
         this.parameterBinds.put(name, p);
-        return this;
-    }
-
-    public Solver<E> setVariableSelectionOrder(List<Integer> ord) {
-        this.decisions = ord;
-        this.total = this.decisions.size();
         return this;
     }
 
@@ -88,7 +80,7 @@ public class Solver<E> {
     public void addSymmetryBreaker(BiFunction<Node, Integer, Boolean> checkSymmetry,
                                    BiFunction<Node, Integer, Integer> calculateCountWeight,
                                    Integer initialWeight) {
-        symmetries = new SymmetryBreaker(checkSymmetry, calculateCountWeight, initialWeight);
+        sym = new SymmetryBreaker(checkSymmetry, calculateCountWeight, initialWeight);
     }
 
     // Loads model by binding input values to parameters and variables
@@ -113,11 +105,11 @@ public class Solver<E> {
 
     // Propagate all constraints that have a propagator
     private boolean propagate(String var, Integer idx, Integer decision, Map<String, List<List<Integer>>> domains) {
-        AtomicBoolean isEmpty = new AtomicBoolean(false);
+        boolean isEmpty = false;
         for (Constraint e : this.constraints)
-            if (e.variableNames.contains(var) && e.propFunc != null)
-                isEmpty.set(e.propFunc.apply(this.parameters, var, idx, decision, domains));
-        return isEmpty.get();
+            if (!isEmpty && e.variableNames.contains(var) && e.propFunc != null)
+                isEmpty = e.propFunc.apply(this.parameters, var, idx, decision, domains);
+        return isEmpty;
     }
 
     // helper for finding next variable within several variable arrays
@@ -147,7 +139,7 @@ public class Solver<E> {
         // for each element in domain
         for (int i = 0; i < curr.domain.size(); i++) {
             // if symmetric, skip tree generation
-            if (symmetries != null && symmetries.checkSymmetry.apply(curr, i)) continue;
+            if (sym != null && sym.checkSymmetry.apply(curr, i)) continue;
             // clone domain again? TODO: look into that for optimization, I assume shallow clones would also work
             Map<String, List<List<Integer>>> ndomain = domains.entrySet().stream()
                     .collect(Collectors.toMap(Map.Entry::getKey, v -> v.getValue()
@@ -155,7 +147,7 @@ public class Solver<E> {
             // build successor tree, and add as child
             curr.children.add(buildTree(curr, next + 1, ndomain,
                     propagate(curr.nextVarDecision, curr.elementIndex, curr.domain.get(i), ndomain),
-                    (symmetries == null) ? curr.weight : symmetries.calculateCountWeight.apply(curr, i)));
+                    (sym == null) ? curr.weight : sym.calculateCountWeight.apply(curr, i)));
         }
         return curr;
     }
@@ -184,8 +176,7 @@ public class Solver<E> {
         // track solve time
         long time = System.currentTimeMillis();
         // build the tree to traverse
-        this.root = buildTree(null, 0, domain, false,
-                (symmetries == null) ? 1 : symmetries.initialWeight);
+        this.root = buildTree(null, 0, domain, false, (sym == null) ? 1 : sym.initialWeight);
         // map variable names to initial values
         Map<String, Integer[]> init = this.variables.entrySet().stream().collect(
                 Collectors.toMap(Map.Entry::getKey, i -> i.getValue().value));
@@ -201,15 +192,15 @@ public class Solver<E> {
         return true;
     }
 
-    private void solve(Node curr, Map<String, Integer[]> m, int level) {
+    private void solve(Node curr, Map<String, Integer[]> pickedValues, int level) {
         if (solType == Problem.SATISFY && sol.count >= 1) return;
         // if all variables have been picked, check for satisfiability
         if (level == total) {
-            if (!testSatisfy(m)) return;
+            if (!testSatisfy(pickedValues)) return;
             // if count -> skip transforming/adding entry
             if (this.solType != Problem.COUNT) {
                 // transform entry and add to solution pool
-                E transformed = this.transform.apply(m);
+                E transformed = this.transform.apply(pickedValues);
                 switch (this.solType) {
                     case SATISFY:
                     case ALL:
@@ -232,12 +223,12 @@ public class Solver<E> {
         // for each of the remaining domains
         for (AtomicInteger i = new AtomicInteger(0); i.get() < t; i.getAndIncrement()) {
             // get domain of next variable
-            m.computeIfPresent(curr.nextVarDecision, (varName, varValue) -> {
+            pickedValues.computeIfPresent(curr.nextVarDecision, (varName, varValue) -> {
                 varValue[curr.elementIndex] = curr.domain.get(i.get());
                 return varValue;
             });
             // and solve for that
-            solve(curr.children.remove(0), m, level + 1);
+            solve(curr.children.remove(0), pickedValues, level + 1);
         }
     }
 }

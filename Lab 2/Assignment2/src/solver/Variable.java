@@ -7,6 +7,7 @@ public class Variable {
 
     // domain of possible values
     List<Integer> domain;
+
     // array of possible values
     Integer[] value;
 
