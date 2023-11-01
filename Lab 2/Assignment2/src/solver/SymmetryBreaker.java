@@ -1,7 +1,5 @@
 package solver;
 
-import java.util.Map;
-
 // Symmetry breaker wrapper
 class SymmetryBreaker {
 
@@ -9,14 +7,15 @@ class SymmetryBreaker {
     // then this value should be 2)
     Integer initialWeight;
 
-    // Symmetry check function ((node, decision) -> is it a symmetrical state)
-    TriFunction<Node, Integer, Map<String, Object>, Boolean> checkSymmetry;
+    // Symmetry check function ((parameters, variable, element index, decision, domain) ->
+    // is it a symmetrical state)
+    SymmetryCheckFunction checkSymmetry;
 
-    // Weight function ((node, decision) -> weight of current state/how many symmetries does it break)
-    TriFunction<Node, Integer, Map<String, Object>, Integer> calculateCountWeight;
+    // Weight function ((parameters, variable, element index, decision, weight) ->
+    // weight of current state/how many symmetries does it break)
+    SymmetryWeightFunction calculateCountWeight;
 
-    public SymmetryBreaker(TriFunction<Node, Integer, Map<String, Object>, Boolean> checkSymmetry,
-                           TriFunction<Node, Integer, Map<String, Object>, Integer> calculateCountWeight,
+    public SymmetryBreaker(SymmetryCheckFunction checkSymmetry, SymmetryWeightFunction calculateCountWeight,
                            Integer initialWeight) {
         this.checkSymmetry = checkSymmetry;
         this.calculateCountWeight = calculateCountWeight;

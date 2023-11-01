@@ -2,6 +2,8 @@ import solver.CSolution;
 import solver.Problem;
 import solver.PropagatorFunction;
 import solver.Solver;
+import solver.SymmetryCheckFunction;
+import solver.SymmetryWeightFunction;
 import solver.VariableBind;
 
 import java.util.HashMap;
@@ -68,17 +70,25 @@ public class NQueens {
                 // Checker function -> when branches can be skipped due to symmetry
                 // For this problem, simplest symmetry breaker is enforcing first row queen to be
                 // only on the first half -> Breaks x-axis mirrored solutions
-                (node, decision, params) -> node.elementIndex == 0 &&
-                        node.domain[decision] > ((Integer) params.get("N") - 1) / 2,
+                new SymmetryCheckFunction() {
+                    @Override
+                    public Boolean apply(Map<String, Object> params, String var, Integer idx, Integer decision,
+                                         Integer[] domain) {
+                        return idx == 0 && decision > ((Integer) params.get("N") - 1) / 2;
+                    }
+                },
                 // Weight function -> determine how much should we count each individual symmetrical branch
                 // For this problem, it is always 2, except if
                 // we are on the middle column of a board with odd dimensions
-                (node, decision, params) -> {
-                    int n = (Integer) params.get("N");
-                    return Math.min(node.weight, (node.elementIndex == 0 && (n % 2 != 0) &&
-                            (node.domain[decision] == (n - 1) / 2)) ? 1 : 2);
-                },
-                2);
+                new SymmetryWeightFunction() {
+                    @Override
+                    public Integer apply(Map<String, Object> params, String var, Integer idx, Integer decision,
+                                         Integer weight) {
+                        int n = (Integer) params.get("N");
+                        return Math.min(weight, (idx == 0 && (n % 2 != 0) &&
+                                (decision == (n - 1) / 2)) ? 1 : 2);
+                    }
+                }, 2);
 
         Map<String, Object> model = new HashMap<>();
         model.put("N", 12);

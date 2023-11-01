@@ -74,8 +74,7 @@ public class Solver<E> {
         return this;
     }
 
-    public void addSymmetryBreaker(TriFunction<Node, Integer, Map<String, Object>, Boolean> checkSymmetry,
-                                   TriFunction<Node, Integer, Map<String, Object>, Integer> calculateCountWeight,
+    public void addSymmetryBreaker(SymmetryCheckFunction checkSymmetry, SymmetryWeightFunction calculateCountWeight,
                                    Integer initialWeight) {
         sym = new SymmetryBreaker(checkSymmetry, calculateCountWeight, initialWeight);
     }
