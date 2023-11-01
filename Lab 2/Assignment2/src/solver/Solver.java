@@ -5,6 +5,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -143,7 +144,7 @@ public class Solver<E> {
         // Create decisions
         this.decisions = IntStream.range(0, total).boxed().collect(Collectors.toList());
         // Randomize decision TODO: Generalize with variable orders
-        // Collections.shuffle(this.decisions);
+        //Collections.shuffle(this.decisions);
         // map variable names to possible domains, for every single list element
         Map<String, Integer[][]> domains = this.variables.entrySet().stream()
                 .collect(Collectors.toMap(Map.Entry::getKey, e -> {
@@ -209,9 +210,13 @@ public class Solver<E> {
                     return varValue;
                 });
                 // New domain for future children
+                AtomicInteger k = new AtomicInteger(0);
                 Map<String, Integer[][]> newDomain = domains.entrySet().stream()
                         .collect(Collectors.toMap(Map.Entry::getKey, v -> Arrays.stream(v.getValue())
-                                .map(arr -> Arrays.copyOf(arr, arr.length)).toArray(Integer[][]::new)));
+                                .map(arr -> {
+                                    if (elementIndex.equals(k.getAndIncrement())) return arr;
+                                    return Arrays.copyOf(arr, arr.length);
+                                }).toArray(Integer[][]::new)));
                 // If one of the domains becomes empty, then impossible to solve -> skip branch
                 if (propagate(nextVarDecision, elementIndex, currDomain[i], newDomain)) continue;
                 // Continue with next decisions

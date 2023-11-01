@@ -1,4 +1,6 @@
 import solver.CSolution;
+import solver.Constraint;
+import solver.ConstraintPropagators;
 import solver.Problem;
 import solver.Solver;
 import solver.VariableBind;
@@ -21,9 +23,16 @@ public class Combinations {
                         .boxed().collect(Collectors.toList()),
                         List.of("K"), i -> new Integer[(Integer) i.get(0)]))
 
-                .addConstraint("comb", "decrease", -1)
-                // remove to allow repetitions
-                .addConstraint("comb", "alldiff", -1);
+                // remove alldiff to allow repetitions
+                // Constraint to check if picked values are all different and in decreasing order
+                .addConstraint(new Constraint(List.of(), List.of("comb"), (p, v) -> {
+                    int prev = Integer.MAX_VALUE;
+                    for (Integer i : v.get(0)) {
+                        if (i >= prev) return false;
+                        prev = i;
+                    }
+                    return true;
+                }, ConstraintPropagators.get("alldiff", -1)));
 
         Map<String, Object> model = new HashMap<>();
         model.put("N", 1000);

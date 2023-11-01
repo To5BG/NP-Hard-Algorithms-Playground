@@ -2,11 +2,10 @@ package solver;
 
 import java.util.Arrays;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 public class ConstraintPropagators {
 
-    static PropagatorFunction get(String option, int arg) {
+    public static PropagatorFunction get(String option, int arg) {
         switch (option) {
             case "alldiff":
                 return alldiff(arg);
@@ -29,22 +28,18 @@ public class ConstraintPropagators {
             public Boolean apply(Map<String, Object> params, String var, Integer idx, Integer decision,
                                  Map<String, Integer[][]> domains) {
                 if (decision.equals(arg)) return false;
-                AtomicBoolean res = new AtomicBoolean(false);
-                domains.computeIfPresent(var, (k, v) -> {
-                    for (int i = 0; i < v.length; i++) {
-                        Integer[] l = v[i];
-                        if (i == idx) continue;
-                        if (res.get()) break;
-                        for (int j = 0; j < l.length; j++) {
-                            if (!decision.equals(l[j])) continue;
-                            l[j] = Integer.MIN_VALUE;
-                            break;
-                        }
-                        if (Arrays.stream(l).noneMatch(ll -> ll != Integer.MIN_VALUE)) res.set(true);
+                Integer[][] v = domains.get(var);
+                for (int i = 0; i < v.length; i++) {
+                    Integer[] l = v[i];
+                    if (i == idx) continue;
+                    for (int j = 0; j < l.length; j++) {
+                        if (!decision.equals(l[j])) continue;
+                        l[j] = Integer.MIN_VALUE;
+                        break;
                     }
-                    return v;
-                });
-                return res.get();
+                    if (Arrays.stream(l).noneMatch(ll -> ll != Integer.MIN_VALUE)) return true;
+                }
+                return false;
             }
         };
     }
@@ -55,22 +50,18 @@ public class ConstraintPropagators {
             @Override
             public Boolean apply(Map<String, Object> params, String var, Integer idx, Integer decision,
                                  Map<String, Integer[][]> domains) {
-                AtomicBoolean res = new AtomicBoolean(false);
-                domains.computeIfPresent(var, (k, v) -> {
-                    for (int i = 0; i < v.length; i++) {
-                        Integer[] l = v[i];
-                        if (i == idx) continue;
-                        if (res.get()) break;
-                        for (int j = l.length - 1; j >= 0; j--) {
-                            if (l[j] == Integer.MIN_VALUE) continue;
-                            if ((i < idx) ? (l[j] < decision) : (l[j] > decision))
-                                l[j] = Integer.MIN_VALUE;
-                        }
-                        if (Arrays.stream(l).noneMatch(ll -> ll != Integer.MIN_VALUE)) res.set(true);
+                Integer[][] v = domains.get(var);
+                for (int i = 0; i < v.length; i++) {
+                    Integer[] l = v[i];
+                    if (i == idx) continue;
+                    for (int j = l.length - 1; j >= 0; j--) {
+                        if (l[j] == Integer.MIN_VALUE) continue;
+                        if ((i < idx) ? (l[j] < decision) : (l[j] > decision))
+                            l[j] = Integer.MIN_VALUE;
                     }
-                    return v;
-                });
-                return res.get();
+                    if (Arrays.stream(l).noneMatch(ll -> ll != Integer.MIN_VALUE)) return true;
+                }
+                return false;
             }
         };
     }
