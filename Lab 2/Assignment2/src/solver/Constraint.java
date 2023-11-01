@@ -17,7 +17,7 @@ public class Constraint {
     // Constraint function ((parameters, variable values) -> does it satisfy)
     BiFunction<List<Object>, List<Integer[]>, Boolean> constr;
 
-    // Propagation function ((parameters, variables, element index, domain value, full domain) -> can you propagate)
+    // Propagation function ((parameters, variable, element index, decision, full domain) -> can you propagate)
     PropagatorFunction propFunc;
 
     public Constraint(List<String> parameterNames, List<String> variableNames,

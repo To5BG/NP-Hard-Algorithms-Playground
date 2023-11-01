@@ -24,14 +24,14 @@ public class Subset {
                 .addConstraint("comb", "decrease", -1);
 
         Map<String, Object> model = new HashMap<>();
-        model.put("N", 16);
+        model.put("N", 18);
 
         CSolution<int[]> res = s.solve(model, Problem.ALL, m ->
                 Arrays.stream(m.get("comb")).filter(i -> i != 0).mapToInt(Integer::intValue).toArray(), null);
 
         System.out.println("=====SOLUTION=====");
         System.out.println(res.count);
-        //for (int[] i : res.solutions)
-        //    System.out.println(Arrays.stream(i).mapToObj(ii -> ii + ",").reduce("", String::concat));
+        for (int[] i : res.solutions)
+            System.out.println(Arrays.stream(i).mapToObj(ii -> ii + ",").reduce("", String::concat));
     }
 }

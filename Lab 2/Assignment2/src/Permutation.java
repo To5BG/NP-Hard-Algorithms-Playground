@@ -23,7 +23,7 @@ public class Permutation {
                 .addConstraint("comb", "alldiff", -1);
 
         Map<String, Object> model = new HashMap<>();
-        model.put("N", 9);
+        model.put("N", 10);
 
         CSolution<int[]> res = s.solve(model, Problem.ALL, m ->
                 Arrays.stream(m.get("comb")).mapToInt(Integer::intValue).toArray(), null);

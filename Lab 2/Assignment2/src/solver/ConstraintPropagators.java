@@ -61,7 +61,7 @@ public class ConstraintPropagators {
                         if (i == idx) continue;
                         for (int j = l.length - 1; j >= 0; j--) {
                             if (l[j] == Integer.MIN_VALUE) continue;
-                            if ((i < idx) ? (l[j] > decision) : (l[j] < decision))
+                            if ((i < idx) ? (l[j] < decision) : (l[j] > decision))
                                 l[j] = Integer.MIN_VALUE;
                         }
                     }

@@ -23,8 +23,6 @@ public class Solver<E> {
     List<String> variableNames;
     // List of constraints to apply
     List<Constraint> constraints;
-    // Starting node root
-    Node root;
     // Total number of variables and min/max score for MIN/MAX problems
     Integer total, best;
     // Type of problem to solve
@@ -125,48 +123,27 @@ public class Solver<E> {
         return new Pair(name, s - varIndex);
     }
 
-    private Node buildTree(Node par, int next, Map<String, Integer[][]> domains, boolean isEmpty, int w) {
-        Node curr = new Node(par);
-        curr.weight = w;
-        // child node -> all decisions done
-        if (next == decisions.size() || isEmpty) return curr;
-        // determine next variable to decide on (pick array and element)
-        Pair currPair = getNext(decisions.get(next));
-        curr.nextVarDecision = (String) currPair.l;
-        curr.elementIndex = (Integer) currPair.r;
-        // clone domain
-        Integer[] oldDomain = domains.get(curr.nextVarDecision)[curr.elementIndex];
-        curr.domain = Arrays.copyOf(oldDomain, oldDomain.length);
-        // for each element in domain
-        for (int i = 0; i < curr.domain.length; i++) {
-            if (curr.domain[i] == Integer.MIN_VALUE) continue;
-            // if symmetric, skip tree generation
-            if (sym != null && sym.checkSymmetry.apply(curr, i, this.parameters)) continue;
-            // clone domain again? TODO: look into that for optimization, I assume shallow clones would also work
-            Map<String, Integer[][]> newDomain = domains.entrySet().stream()
-                    .collect(Collectors.toMap(Map.Entry::getKey, v -> Arrays.stream(v.getValue())
-                            .map(arr -> Arrays.copyOf(arr, arr.length)).toArray(Integer[][]::new)));
-            // build successor tree, and add as child
-            curr.children.add(buildTree(curr, next + 1, newDomain,
-                    propagate(curr.nextVarDecision, curr.elementIndex, curr.domain[i], newDomain),
-                    (sym == null) ? curr.weight : sym.calculateCountWeight.apply(curr, i, this.parameters)));
-        }
-        return curr;
+    // Tests all constraints with given parameters and picked variables
+    private boolean testSatisfy(Map<String, Integer[]> test) {
+        for (Constraint c : this.constraints) if (!c.apply(this.parameters, test)) return false;
+        return true;
     }
 
     public CSolution<E> solve(Map<String, Object> model, Problem sol, Function<Map<String, Integer[]>, E> transform,
                               Function<E, Integer> eval) {
         // If already computed, return old solution
         if (this.sol != null && this.solType != sol) return this.sol;
+        // find parameters/precompute variables by loading model
         loadModel(model);
         this.solType = sol;
         this.sol = new CSolution<>();
         this.transform = transform;
         this.eval = eval;
         this.best = (this.solType == Problem.MAX) ? Integer.MIN_VALUE : Integer.MAX_VALUE;
+        // Create decisions
         this.decisions = IntStream.range(0, total).boxed().collect(Collectors.toList());
-        // Randomize decision
-        //Collections.shuffle(this.decisions);
+        // Randomize decision TODO: Generalize with variable orders
+        // Collections.shuffle(this.decisions);
         // map variable names to possible domains, for every single list element
         Map<String, Integer[][]> domains = this.variables.entrySet().stream()
                 .collect(Collectors.toMap(Map.Entry::getKey, e -> {
@@ -174,34 +151,26 @@ public class Solver<E> {
                     return IntStream.range(0, var.value.length).mapToObj(i -> var.domain.toArray(Integer[]::new))
                             .toArray(Integer[][]::new);
                 }));
-        // track solve time
-        long time = System.currentTimeMillis();
-        // build the tree to traverse
-        this.root = buildTree(null, 0, domains, false, (sym == null) ? 1 : sym.initialWeight);
         // map variable names to initial values
         Map<String, Integer[]> init = this.variables.entrySet().stream().collect(
                 Collectors.toMap(Map.Entry::getKey, i -> i.getValue().value));
-        // start traversing
-        solve(this.root, init, 0);
+        // track solve time
+        long time = System.currentTimeMillis();
+        // start solution
+        solve(init, domains, 0, (this.sym == null) ? 1 : this.sym.initialWeight);
+        //solve(this.root, init, 0);
         System.out.println("Solved in: " + (System.currentTimeMillis() - time) + "ms");
         return this.sol;
     }
 
-    // Tests all constraints with given parameters and picked variables
-    private boolean testSatisfy(Map<String, Integer[]> test) {
-        for (Constraint c : this.constraints) if (!c.apply(this.parameters, test)) return false;
-        return true;
-    }
-
-    private void solve(Node curr, Map<String, Integer[]> pickedValues, int level) {
-        if (solType == Problem.SATISFY && sol.count >= 1) return;
+    private void solve(Map<String, Integer[]> values, Map<String, Integer[][]> domains, int level, int weight) {
         // if all variables have been picked, check for satisfiability
         if (level == total) {
-            if (!testSatisfy(pickedValues)) return;
+            if (!testSatisfy(values)) return;
             // if count -> skip transforming/adding entry
             if (this.solType != Problem.COUNT) {
                 // transform entry and add to solution pool
-                E transformed = this.transform.apply(pickedValues);
+                E transformed = this.transform.apply(values);
                 switch (this.solType) {
                     case SATISFY:
                     case ALL:
@@ -217,23 +186,29 @@ public class Solver<E> {
                         break;
                 }
             }
-            this.sol.count += curr.weight;
-        }
-        else {
-            if (curr.domain == null) return;
-            int nextChild = 0;
-            // for each of the remaining domains
-            for (int i = 0; i < curr.domain.length; i++) {
-                if (curr.domain[i] == Integer.MIN_VALUE) continue;
-                if (nextChild >= curr.children.size()) break;
-                // get domain of next variable
+            this.sol.count += weight;
+        } else {
+            Pair currPair = getNext(decisions.get(level));
+            String nextVarDecision = (String) currPair.l;
+            Integer elementIndex = (Integer) currPair.r;
+            Integer[] currDomain = domains.get(nextVarDecision)[elementIndex];
+            for (int i = 0; i < currDomain.length; i++) {
+                if (solType == Problem.SATISFY && sol.count >= 1) break;
+                if (currDomain[i] == Integer.MIN_VALUE) continue;
+                // if symmetric, skip tree generation
+                if (sym != null && sym.checkSymmetry.apply(this.parameters, nextVarDecision, elementIndex,
+                        currDomain[i], currDomain)) continue;
                 int finalI = i;
-                pickedValues.computeIfPresent(curr.nextVarDecision, (varName, varValue) -> {
-                    varValue[curr.elementIndex] = curr.domain[finalI];
+                values.computeIfPresent(nextVarDecision, (varName, varValue) -> {
+                    varValue[elementIndex] = currDomain[finalI];
                     return varValue;
                 });
-                // and solve for that
-                solve(curr.children.get(nextChild++), pickedValues, level + 1);
+                Map<String, Integer[][]> newDomain = domains.entrySet().stream()
+                        .collect(Collectors.toMap(Map.Entry::getKey, v -> Arrays.stream(v.getValue())
+                                .map(arr -> Arrays.copyOf(arr, arr.length)).toArray(Integer[][]::new)));
+                if (propagate(nextVarDecision, elementIndex, currDomain[i], newDomain)) continue;
+                solve(values, newDomain, level + 1, (sym == null) ? weight : sym.calculateCountWeight.apply(
+                        this.parameters, nextVarDecision, elementIndex, currDomain[i], weight));
             }
         }
     }
