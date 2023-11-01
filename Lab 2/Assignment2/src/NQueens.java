@@ -15,42 +15,6 @@ import java.util.stream.IntStream;
 public class NQueens {
     public static void main(String[] args) {
 
-        PropagatorFunction positiveDiagonalPropagation = new PropagatorFunction() {
-            @Override
-            public Boolean apply(Map<String, Object> params, String var, Integer idx, Integer decision,
-                                 Map<String, Integer[][]> domains) {
-                domains.computeIfPresent(var, (k, v) -> {
-                    for (int i = 0; i < v.length; i++) {
-                        if (idx == i) continue;
-                        Integer[] ll = v[i];
-                        int removed = idx + decision - i;
-                        for (int j = 0; j < ll.length; j++)
-                            if (ll[j].equals(removed)) ll[j] = Integer.MIN_VALUE;
-                    }
-                    return v;
-                });
-                return false;
-            }
-        };
-
-        PropagatorFunction negativeDiagonalPropagation = new PropagatorFunction() {
-            @Override
-            public Boolean apply(Map<String, Object> params, String var, Integer idx, Integer decision,
-                                 Map<String, Integer[][]> domains) {
-                domains.computeIfPresent(var, (k, v) -> {
-                    for (int i = 0; i < v.length; i++) {
-                        if (idx == i) continue;
-                        Integer[] ll = v[i];
-                        int removed = decision - idx + i;
-                        for (int j = 0; j < ll.length; j++)
-                            if (ll[j].equals(removed)) ll[j] = Integer.MIN_VALUE;
-                    }
-                    return v;
-                });
-                return false;
-            }
-        };
-
         Solver<Object> s = new Solver<>()
                 .addParameter("N", null)
                 // Model board as an n-array, where q[i] = column of queen on ith row
@@ -60,10 +24,38 @@ public class NQueens {
                 // No queens on same column
                 .addConstraint("q", "alldiff", -1)
                 // Constraints for diagonals
-                // Check that for no two queens q[i] + i == q[j] + j (or / diagonal)
-                .addConstraint("q", positiveDiagonalPropagation)
-                // Check that for no two queens q[i] - i == q[j] - j (or \ diagonal)
-                .addConstraint("q", negativeDiagonalPropagation);
+                // Check that for no two queens q[i] + i == q[j] + j (or positive (/) diagonal)
+                .addConstraint("q", new PropagatorFunction() {
+                    @Override
+                    public Boolean apply(Map<String, Object> params, String var, Integer idx, Integer decision,
+                                         Map<String, Integer[][]> domains) {
+                        Integer[][] v = domains.get(var);
+                        for (int i = 0; i < v.length; i++) {
+                            if (idx == i) continue;
+                            Integer[] ll = v[i];
+                            int removed = idx + decision - i;
+                            for (int j = 0; j < ll.length; j++)
+                                if (ll[j].equals(removed)) ll[j] = Integer.MIN_VALUE;
+                        }
+                        return false;
+                    }
+                })
+                // Check that for no two queens q[i] - i == q[j] - j (or negative (\) diagonal)
+                .addConstraint("q", new PropagatorFunction() {
+                    @Override
+                    public Boolean apply(Map<String, Object> params, String var, Integer idx, Integer decision,
+                                         Map<String, Integer[][]> domains) {
+                        Integer[][] v = domains.get(var);
+                        for (int i = 0; i < v.length; i++) {
+                            if (idx == i) continue;
+                            Integer[] ll = v[i];
+                            int removed = decision - idx + i;
+                            for (int j = 0; j < ll.length; j++)
+                                if (ll[j].equals(removed)) ll[j] = Integer.MIN_VALUE;
+                        }
+                        return false;
+                    }
+                });
 
         // Symmetry breaker, arguments explained below, small comments on their location among the solver
         s.addSymmetryBreaker(
