@@ -16,15 +16,15 @@ public class Sudoku {
     public static void main(String[] args) {
 
         int[][] grid = new int[][]{
-                new int[]{5, -1, 9, 7, 6, -1, -1, -1, 2},
-                new int[]{3, 8, 6, -1, -1, 9, 4, 7, 5},
-                new int[]{4, 2, 7, 3, 5, 8, 9, -1, 6},
-                new int[]{-1, 7, 1, 5, 8, 3, 2, 6, 4},
-                new int[]{-1, 3, 8, 4, 7, -1, 1, -1, 9},
-                new int[]{2, 4, 5, 9, -1, 6, 7, 8, -1},
-                new int[]{1, -1, -1, 8, 3, 5, 6, 4, 7},
-                new int[]{-1, 5, 4, 6, 9, -1, 3, -1, 1},
-                new int[]{-1, 6, -1, 2, 4, 1, 5, -1, 8},
+                new int[]{8,-1,4,-1,6,2,1,3,-1,},
+                new int[]{-1,-1,9,-1,-1,-1,4,2,-1,},
+                new int[]{2,-1,-1,-1,-1,4,7,-1,-1,},
+                new int[]{-1,4,-1,-1,-1,-1,-1,9,-1,},
+                new int[]{6,3,2,7,4,-1,-1,-1,-1,},
+                new int[]{-1,5,-1,-1,3,-1,-1,-1,-1,},
+                new int[]{1,8,6,-1,-1,7,-1,5,-1,},
+                new int[]{4,9,5,-1,2,-1,8,-1,-1,},
+                new int[]{-1,-1,-1,-1,-1,-1,9,-1,-1,},
         };
 
         // Model board as N arrays of size N, i-th row called 'puzzle_i'
@@ -108,13 +108,12 @@ public class Sudoku {
         Map<String, Object> model = new HashMap<>();
         model.put("N", grid.length);
 
-        CSolution<int[][]> res = solver.solve(model, Problem.ALL, m ->
+        CSolution<int[][]> res = solver.solve(model, Problem.SATISFY, m ->
                 IntStream.range(0, grid.length).mapToObj(i ->
                         Arrays.stream(Arrays.copyOf(m.get("puzzle_" + i), grid.length)).mapToInt(Integer::intValue)
                                 .toArray()).toArray(int[][]::new), null);
 
         System.out.println(res.count);
-        assert res.solutions.size() == 1;
         int[][] ss = res.solutions.get(0);
         for (int[] s : ss) {
             for (int i : s) System.out.print(i + " ");
