@@ -25,4 +25,3 @@ public class VariableBind extends Bind {
         return this.domainF.apply(this.domainArgs.stream().map(mapper::get).collect(Collectors.toList()));
     }
 }
-

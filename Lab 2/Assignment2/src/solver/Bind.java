@@ -23,4 +23,3 @@ public class Bind {
         return this.f.apply(this.args.stream().map(mapper::get).collect(Collectors.toList()));
     }
 }
-
