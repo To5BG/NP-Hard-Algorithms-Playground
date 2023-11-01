@@ -16,93 +16,94 @@ public class Sudoku {
     public static void main(String[] args) {
 
         int[][] grid = new int[][]{
-                new int[]{6, 15, 1, 7, 3, -1, 2, 4, 11, 5, 10, 8, 13, 9, 16, 12},
-                new int[]{2, 11, 10, -1, 13, 8, 5, 12, 9, 14, 1, 16, 3, 15, 6, -1},
-                new int[]{9, 16, 14, 3, 7, 11, -1, 1, 2, 15, 12, 13, -1, 4, 8, 10},
-                new int[]{-1, 8, -1, 13, -1, 16, 10, 15, 3, 6, 4, 7, 2, 14, -1, 1},
-                new int[]{11, 9, -1, 16, 4, -1, -1, 13, 6, 7, -1, 15, 1, 2, 3, 8},
-                new int[]{3, 1, 4, 12, 2, 6, 15, 11, 16, 8, 13, 10, 7, 5, 14, 9},
-                new int[]{10, 2, 7, 8, 1, 3, 16, 14, 12, 9, -1, -1, 4, 13, 15, 6},
-                new int[]{15, 6, 13, -1, 8, 5, -1, 7, 4, 3, 2, -1, 11, 12, 10, 16},
-                new int[]{16, 14, 2, 15, 12, 13, -1, 5, 1, -1, 6, 9, 8, 3, 4, 11},
-                new int[]{7, -1, 6, 10, 14, 2, 3, 16, 15, 11, 8, 4, 12, 1, 9, 5},
-                new int[]{-1, 4, 9, 11, 10, 15, -1, 6, -1, 12, 7, 3, 14, 16, 13, 2},
-                new int[]{-1, 12, 3, 5, -1, 4, 8, 9, 13, 2, 16, 14, -1, -1, 7, -1},
-                new int[]{13, -1, 11, -1, 5, 9, 14, -1, 7, 1, 15, 6, -1, -1, 12, -1},
-                new int[]{12, 3, 16, 1, 15, 7, -1, -1, 10, 13, -1, 5, -1, 11, 2, 14},
-                new int[]{4, 7, 8, 9, 6, 1, 11, 2, 14, 16, 3, 12, 15, 10, 5, 13},
-                new int[]{14, 5, 15, 6, 16, 12, 13, 10, 8, 4, 11, 2, 9, -1, 1, 3},
+                new int[]{5, -1, 9, 7, 6, -1, -1, -1, 2},
+                new int[]{3, 8, 6, -1, -1, 9, 4, 7, 5},
+                new int[]{4, 2, 7, 3, 5, 8, 9, -1, 6},
+                new int[]{-1, 7, 1, 5, 8, 3, 2, 6, 4},
+                new int[]{-1, 3, 8, 4, 7, -1, 1, -1, 9},
+                new int[]{2, 4, 5, 9, -1, 6, 7, 8, -1},
+                new int[]{1, -1, -1, 8, 3, 5, 6, 4, 7},
+                new int[]{-1, 5, 4, 6, 9, -1, 3, -1, 1},
+                new int[]{-1, 6, -1, 2, 4, 1, 5, -1, 8},
         };
 
-        List<Integer> idx = IntStream.range(0, grid.length).boxed().sorted((m, n) -> {
-            long a = Arrays.stream(grid[m]).filter(i -> i == -1).count();
-            long b = Arrays.stream(grid[n]).filter(i -> i == -1).count();
-            if (a == 0) a += grid.length;
-            if (b == 0) b += grid.length;
-            return Long.compare(a, b);
-        }).flatMap(m -> IntStream.range(0, grid[m].length)
-                .filter(i -> grid[m][i] == -1).map(i -> m * grid[m].length + i).boxed()).collect(Collectors.toList());
-        for (int id : idx)
-            System.out.print(id + " ");
-        System.out.println();
-
+        // Model board as N arrays of size N, i-th row called 'puzzle_i'
         List<String> fullVar = IntStream.range(0, grid.length).mapToObj(i -> "puzzle_" + i)
                 .collect(Collectors.toList());
 
-        Solver<int[][]> solver = new Solver<int[][]>()
-                .addParameter("N", null);
+        Solver<int[][]> solver = new Solver<int[][]>().addParameter("N", null);
 
+        // Apply the row-based constraints for each row separately
         for (int i = 0; i < grid.length; i++) {
             int finalI = i;
-            PropagatorFunction somePropagatorThatIdoNotKnow = new PropagatorFunction() {
-                @Override
-                public Boolean apply(Map<String, Object> params, String var, Integer idx, Integer decision,
-                                     Map<String, Integer[][]> domains) {
-                    domains.computeIfPresent(var, (k, v) -> {
-                        for (int ii = 0; ii < v.length; ii++) {
-                            if (ii == idx) continue;
-                            if (grid[finalI][ii] != -1) {
-                                Integer[] newDomain = new Integer[]{grid[finalI][ii]};
-                                v[ii] = newDomain;
-                            }
-                        }
-                        return v;
-                    });
-                    return false;
-                }
-            };
-
-            solver = solver.addVariable("puzzle_" + i, new VariableBind(
+            solver.addVariable("puzzle_" + i, new VariableBind(
                             List.of("N"), j -> IntStream.rangeClosed(1, (Integer) j.get(0))
                             .boxed().collect(Collectors.toList()),
                             List.of("N"), j -> new Integer[(Integer) j.get(0)]))
-
-                    .addConstraint("puzzle_" + i, somePropagatorThatIdoNotKnow)
-                    .addConstraint("puzzle_" + i, "alldiff", -1)
-                    .addConstraint("puzzle_" + i, "hi", -1)
-                    .addConstraint("puzzle_" + i, "hi2", -1);
+                    // Setter constraint -> any provided values must be enforced on domains
+                    .addConstraint("puzzle_" + i, new PropagatorFunction() {
+                        @Override
+                        public Boolean apply(Map<String, Object> params, String var, Integer idx, Integer decision,
+                                             Map<String, Integer[][]> domains) {
+                            Integer[][] v = domains.get(var);
+                            for (int i = 0; i < v.length; i++)
+                                if (grid[finalI][i] != -1) v[i] = new Integer[]{grid[finalI][i]};
+                            return false;
+                        }
+                    })
+                    // Sudoku rule #1: All numbers in a row are different
+                    .addConstraint("puzzle_" + i, "alldiff", -1);
         }
 
-        solver = solver
+        solver
+                // Sudoku rule #2: All numbers in a column are different
                 .addConstraint(new Constraint(List.of(), fullVar, (p, v) -> {
-                    for (int i = 0; i < v.size(); i++)
-                        for (int j = 0; j < v.size(); j++)
-                            for (int k = j + 1; k < v.size(); k++)
-                                if (v.get(j)[i].equals(v.get(k)[i])) return false;
+                    for (int col = 0; col < v.size(); col++)
+                        for (int row1 = 0; row1 < v.size(); row1++)
+                            for (int row2 = row1 + 1; row2 < v.size(); row2++)
+                                if (v.get(row1)[col].equals(v.get(row2)[col])) return false;
                     return true;
-                }, null))
+                }, new PropagatorFunction() {
+                    @Override
+                    public Boolean apply(Map<String, Object> params, String var, Integer idx, Integer decision,
+                                         Map<String, Integer[][]> domains) {
+                        for (Map.Entry<String, Integer[][]> rowEntry : domains.entrySet()) {
+                            if (rowEntry.getKey().equals(var)) continue;
+                            if (findRepeatedEntries(idx, decision, rowEntry.getValue())) return true;
+                        }
+                        return false;
+                    }
+                }))
+                // Sudoku rule #3: All numbers in an NxN area are different
                 .addConstraint(new Constraint(List.of(), fullVar, (p, v) -> {
                     int n = (int) Math.sqrt(grid.length);
                     for (int i = 0; i < n; i++)
                         for (int j = 0; j < n; j++) {
                             int finalJ = j;
-                            List<Integer> section = IntStream.range(i * n, (i + 1) * n).flatMap(i1 ->
-                                            Arrays.stream(grid[i1], finalJ * n, (finalJ + 1) * n))
-                                    .filter(nn -> nn != -1).boxed().collect(Collectors.toList());
+                            List<Integer> section = IntStream.range(i * n, (i + 1) * n).flatMap(ii ->
+                                            Arrays.stream(grid[ii], finalJ * n,
+                                                    (finalJ + 1) * n)).filter(e -> e != -1)
+                                    .boxed().collect(Collectors.toList());
                             if (section.stream().distinct().count() != section.size()) return false;
                         }
                     return true;
-                }, null));
+                }, new PropagatorFunction() {
+                    @Override
+                    public Boolean apply(Map<String, Object> params, String var, Integer idx, Integer decision,
+                                         Map<String, Integer[][]> domains) {
+                        Integer row = Integer.parseInt(var.split("_")[1]),
+                                n = (int) Math.sqrt((Integer) params.get("N"));
+                        // find NxN region of decided variable
+                        int i = row / n, j = idx / n;
+                        for (Map.Entry<String, Integer[][]> rowEntry : domains.entrySet()) {
+                            Integer i2 = Integer.parseInt(rowEntry.getKey().split("_")[1]) / n;
+                            if (rowEntry.getKey().equals(var) || !i2.equals(i)) continue;
+                            for (int j2 = j * n; j2 < (j + 1) * n; j2++)
+                                if (findRepeatedEntries(j2, decision, rowEntry.getValue())) return true;
+                        }
+                        return false;
+                    }
+                }));
 
         Map<String, Object> model = new HashMap<>();
         model.put("N", grid.length);
@@ -111,6 +112,7 @@ public class Sudoku {
                 IntStream.range(0, grid.length).mapToObj(i ->
                         Arrays.stream(Arrays.copyOf(m.get("puzzle_" + i), grid.length)).mapToInt(Integer::intValue)
                                 .toArray()).toArray(int[][]::new), null);
+
         System.out.println(res.count);
         assert res.solutions.size() == 1;
         int[][] ss = res.solutions.get(0);
@@ -118,5 +120,12 @@ public class Sudoku {
             for (int i : s) System.out.print(i + " ");
             System.out.println();
         }
+    }
+
+    private static boolean findRepeatedEntries(Integer idx, Integer decision, Integer[][] rowEntry) {
+        Integer[] entry = rowEntry[idx];
+        for (int i = 0; i < entry.length; i++)
+            if (entry[i].equals(decision)) entry[i] = Integer.MIN_VALUE;
+        return Arrays.stream(entry).noneMatch(i -> i != Integer.MIN_VALUE);
     }
 }
