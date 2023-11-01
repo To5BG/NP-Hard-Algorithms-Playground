@@ -188,25 +188,33 @@ public class Solver<E> {
             }
             this.sol.count += weight;
         } else {
+            // Find variable name and index within it for future use
             Pair currPair = getNext(decisions.get(level));
             String nextVarDecision = (String) currPair.l;
             Integer elementIndex = (Integer) currPair.r;
             Integer[] currDomain = domains.get(nextVarDecision)[elementIndex];
+            // For each possible value in domain, build next state
             for (int i = 0; i < currDomain.length; i++) {
+                // Early return if satisfy is solved
                 if (solType == Problem.SATISFY && sol.count >= 1) break;
+                // Skip invalidated decisions
                 if (currDomain[i] == Integer.MIN_VALUE) continue;
-                // if symmetric, skip tree generation
+                // If symmetric, skip branch generation
                 if (sym != null && sym.checkSymmetry.apply(this.parameters, nextVarDecision, elementIndex,
                         currDomain[i], currDomain)) continue;
                 int finalI = i;
+                // Take decision
                 values.computeIfPresent(nextVarDecision, (varName, varValue) -> {
                     varValue[elementIndex] = currDomain[finalI];
                     return varValue;
                 });
+                // New domain for future children
                 Map<String, Integer[][]> newDomain = domains.entrySet().stream()
                         .collect(Collectors.toMap(Map.Entry::getKey, v -> Arrays.stream(v.getValue())
                                 .map(arr -> Arrays.copyOf(arr, arr.length)).toArray(Integer[][]::new)));
+                // If one of the domains becomes empty, then impossible to solve -> skip branch
                 if (propagate(nextVarDecision, elementIndex, currDomain[i], newDomain)) continue;
+                // Continue with next decisions
                 solve(values, newDomain, level + 1, (sym == null) ? weight : sym.calculateCountWeight.apply(
                         this.parameters, nextVarDecision, elementIndex, currDomain[i], weight));
             }

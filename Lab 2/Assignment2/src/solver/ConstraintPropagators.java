@@ -55,19 +55,22 @@ public class ConstraintPropagators {
             @Override
             public Boolean apply(Map<String, Object> params, String var, Integer idx, Integer decision,
                                  Map<String, Integer[][]> domains) {
+                AtomicBoolean res = new AtomicBoolean(false);
                 domains.computeIfPresent(var, (k, v) -> {
                     for (int i = 0; i < v.length; i++) {
                         Integer[] l = v[i];
                         if (i == idx) continue;
+                        if (res.get()) break;
                         for (int j = l.length - 1; j >= 0; j--) {
                             if (l[j] == Integer.MIN_VALUE) continue;
                             if ((i < idx) ? (l[j] < decision) : (l[j] > decision))
                                 l[j] = Integer.MIN_VALUE;
                         }
+                        if (Arrays.stream(l).noneMatch(ll -> ll != Integer.MIN_VALUE)) res.set(true);
                     }
                     return v;
                 });
-                return false;
+                return res.get();
             }
         };
     }
