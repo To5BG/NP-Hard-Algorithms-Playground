@@ -24,7 +24,7 @@ public class Subset {
                 .addConstraint("comb", "decrease", -1);
 
         Map<String, Object> model = new HashMap<>();
-        model.put("N", 20);
+        model.put("N", 18);
 
         CSolution<int[]> res = s.solve(model, Problem.ALL, m ->
                 Arrays.stream(m.get("comb")).filter(i -> i != 0).mapToInt(Integer::intValue).toArray(), null);

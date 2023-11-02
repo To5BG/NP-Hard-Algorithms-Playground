@@ -5,10 +5,10 @@ import java.util.List;
 // Variable wrapper
 public class Variable {
 
-    // domain of possible values
+    // Domain of possible values
     List<Integer> domain;
 
-    // array of possible values
+    // Array of possible values
     Integer[] value;
 
     public Variable(List<Integer> domain, Integer[] value) {

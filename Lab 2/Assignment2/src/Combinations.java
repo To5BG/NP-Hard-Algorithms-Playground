@@ -23,7 +23,7 @@ public class Combinations {
                         .boxed().collect(Collectors.toList()),
                         List.of("K"), i -> new Integer[(Integer) i.get(0)]))
 
-                // remove alldiff to allow repetitions
+                // Remove alldiff to allow repetitions
                 // Constraint to check if picked values are all different and in decreasing order
                 .addConstraint(new Constraint(List.of(), List.of("comb"), (p, v) -> {
                     int prev = Integer.MAX_VALUE;

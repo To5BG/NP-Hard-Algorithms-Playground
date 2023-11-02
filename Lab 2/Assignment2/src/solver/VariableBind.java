@@ -5,13 +5,13 @@ import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-// binds string arguments to values based on f
+// Binds string arguments to values based on f
 public class VariableBind extends Bind {
 
-    // bound arguments (as string names)
+    // Bound arguments (as string names)
     List<String> domainArgs;
 
-    // function to evaluate
+    // Function to evaluate
     Function<List<Object>, List<Integer>> domainF;
 
     public VariableBind(List<String> domainArgs, Function<List<Object>, List<Integer>> domainF,

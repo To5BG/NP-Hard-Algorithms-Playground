@@ -70,8 +70,7 @@ public class NQueens {
                     }
                 },
                 // Weight function -> determine how much should we count each individual symmetrical branch
-                // For this problem, it is always 2, except if
-                // we are on the middle column of a board with odd dimensions
+                // For this problem, it is always 2, except if on the middle column of an odd dimensional board
                 new SymmetryWeightFunction() {
                     @Override
                     public Integer apply(Map<String, Object> params, String var, Integer idx, Integer decision,
@@ -83,7 +82,7 @@ public class NQueens {
                 }, 2);
 
         Map<String, Object> model = new HashMap<>();
-        model.put("N", 12);
+        model.put("N", 13);
 
         CSolution<Object> res = s.solve(model, Problem.COUNT, m -> m, null);
 
