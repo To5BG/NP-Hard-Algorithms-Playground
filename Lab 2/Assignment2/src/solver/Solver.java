@@ -7,7 +7,6 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -26,8 +25,8 @@ public class Solver<E> {
     List<String> variableNames;
     // List of constraints to apply
     List<Constraint> constraints;
-    // Total number of variables and min/max score for MIN/MAX problems
-    Integer total, best;
+    // Total number of variables, min/max score for MIN/MAX problems, and setter for first decision
+    Integer total, best, firstDecision;
     // Type of problem to solve
     Problem solType;
     // Solution object - cache in case of repetitive solver queries
@@ -53,6 +52,7 @@ public class Solver<E> {
         this.variableNames = new ArrayList<>();
         this.constraints = new ArrayList<>();
         this.randomize = this.most_constrained = false;
+        this.firstDecision = 0;
     }
 
     public Solver<E> addParameter(String name, Bind p) {
@@ -80,9 +80,10 @@ public class Solver<E> {
         return this;
     }
 
-    public Solver<E> setVariableSelection(Boolean randomize, Boolean most_constrained) {
+    public Solver<E> setVariableSelection(Boolean randomize, Boolean most_constrained, int firstDecision) {
         this.randomize = randomize;
         this.most_constrained = most_constrained;
+        this.firstDecision = firstDecision;
         return this;
     }
 
@@ -158,7 +159,11 @@ public class Solver<E> {
             List<Integer> decisions = IntStream.range(0, total).boxed().collect(Collectors.toList());
             Collections.shuffle(decisions);
             this.decisions = decisions.toArray(Integer[]::new);
-        } else this.decisions = IntStream.range(0, total).boxed().toArray(Integer[]::new);
+        } else {
+            this.decisions = IntStream.range(0, total).boxed().toArray(Integer[]::new);
+            this.decisions[firstDecision] = 0;
+            this.decisions[0] = firstDecision;
+        }
         this.indexVariables();
         // Map variable names to possible domains, for every single list element
         Map<String, Integer[][]> domains = this.variables.entrySet().stream()

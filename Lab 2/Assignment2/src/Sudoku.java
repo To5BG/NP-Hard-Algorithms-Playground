@@ -68,7 +68,8 @@ public class Sudoku {
         Solver<int[][]> solver = new Solver<int[][]>()
                 .addParameter("N", null)
                 .addParameter("n", new Bind(List.of("N"), (l) -> (int) Math.sqrt((int) l.get(0))))
-                .setVariableSelection(false, true);
+                .setVariableSelection(false, true,
+                        IntStream.range(0, grid.length).filter(i -> grid[0][i] != -1).findFirst().orElse(0));
 
         // Apply the row-based constraints for each row separately
         for (int i = 0; i < grid.length; i++) {

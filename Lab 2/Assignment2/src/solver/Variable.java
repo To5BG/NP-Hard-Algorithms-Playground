@@ -5,7 +5,7 @@ import java.util.List;
 // Variable wrapper
 public class Variable {
 
-    // Domain of possible values
+    // Domain of possible values, prepended with size of domain (num of entries != MIN_VALUE)
     List<Integer> domain;
 
     // Array of possible values
