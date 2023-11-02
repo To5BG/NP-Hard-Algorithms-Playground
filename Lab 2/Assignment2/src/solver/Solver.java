@@ -113,6 +113,7 @@ public class Solver<E> {
             variables.put(e.getKey(), new Variable(dom, v));
             variableNames.add(e.getKey());
         }
+        Collections.sort(variableNames);
     }
 
     // Propagate all constraints that have a propagator
