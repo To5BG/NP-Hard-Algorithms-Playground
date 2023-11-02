@@ -26,14 +26,15 @@ public class ConstraintPropagators {
                 if (decision.equals(arg)) return false;
                 Integer[][] v = domains.get(var);
                 for (int i = 0; i < v.length; i++) {
-                    Integer[] l = v[i];
                     if (i == idx) continue;
-                    for (int j = 0; j < l.length; j++) {
+                    Integer[] l = v[i];
+                    for (int j = 1; j < l.length; j++) {
                         if (!decision.equals(l[j])) continue;
                         l[j] = Integer.MIN_VALUE;
+                        l[0]--;
                         break;
                     }
-                    if (Arrays.stream(l).noneMatch(ll -> ll != Integer.MIN_VALUE)) return true;
+                    if (l[0] == 0) return true;
                 }
                 return false;
             }
@@ -47,15 +48,25 @@ public class ConstraintPropagators {
             public Boolean apply(Map<String, Object> params, String var, Integer idx, Integer decision,
                                  Map<String, Integer[][]> domains) {
                 Integer[][] v = domains.get(var);
-                for (int i = 0; i < v.length; i++) {
+                for (int i = 0; i < idx; i++) {
                     Integer[] l = v[i];
-                    if (i == idx) continue;
-                    for (int j = l.length - 1; j >= 0; j--) {
+                    for (int j = 1; j < l.length; j++) {
                         if (l[j] == Integer.MIN_VALUE) continue;
-                        if ((i < idx) ? (l[j] < decision) : (l[j] > decision))
+                        if (l[j] < decision) {
                             l[j] = Integer.MIN_VALUE;
+                            if (--l[0] == 0) return true;
+                        }
                     }
-                    if (Arrays.stream(l).noneMatch(ll -> ll != Integer.MIN_VALUE)) return true;
+                }
+                for (int i = idx + 1; i < v.length; i++) {
+                    Integer[] l = v[i];
+                    for (int j = 1; j < l.length; j++) {
+                        if (l[j] == Integer.MIN_VALUE) continue;
+                        if (l[j] > decision) {
+                            l[j] = Integer.MIN_VALUE;
+                            if (--l[0] == 0) return true;
+                        }
+                    }
                 }
                 return false;
             }

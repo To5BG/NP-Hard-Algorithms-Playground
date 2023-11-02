@@ -35,7 +35,10 @@ public class NQueens {
                             Integer[] ll = v[i];
                             int removed = idx + decision - i;
                             for (int j = 0; j < ll.length; j++)
-                                if (ll[j].equals(removed)) ll[j] = Integer.MIN_VALUE;
+                                if (ll[j].equals(removed)) {
+                                    ll[j] = Integer.MIN_VALUE;
+                                    if (--ll[0] == 0) return true;
+                                }
                         }
                         return false;
                     }
@@ -51,7 +54,10 @@ public class NQueens {
                             Integer[] ll = v[i];
                             int removed = decision - idx + i;
                             for (int j = 0; j < ll.length; j++)
-                                if (ll[j].equals(removed)) ll[j] = Integer.MIN_VALUE;
+                                if (ll[j].equals(removed)) {
+                                    ll[j] = Integer.MIN_VALUE;
+                                    if (--ll[0] == 0) return true;
+                                }
                         }
                         return false;
                     }

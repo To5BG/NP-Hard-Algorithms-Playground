@@ -2,6 +2,8 @@ package solver;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -40,6 +42,8 @@ public class Solver<E> {
     Pair[] index;
     // Bound symmetry breaker
     SymmetryBreaker sym;
+    // Used for variable selection -> whether to randomize decisions / whether to use most-constrained heuristic
+    Boolean randomize, most_constrained;
 
     public Solver() {
         this.parameterBinds = new HashMap<>();
@@ -48,6 +52,7 @@ public class Solver<E> {
         this.variables = new HashMap<>();
         this.variableNames = new ArrayList<>();
         this.constraints = new ArrayList<>();
+        this.randomize = this.most_constrained = false;
     }
 
     public Solver<E> addParameter(String name, Bind p) {
@@ -75,6 +80,12 @@ public class Solver<E> {
         return this;
     }
 
+    public Solver<E> setVariableSelection(Boolean randomize, Boolean most_constrained) {
+        this.randomize = randomize;
+        this.most_constrained = most_constrained;
+        return this;
+    }
+
     public void addSymmetryBreaker(SymmetryCheckFunction checkSymmetry, SymmetryWeightFunction calculateCountWeight,
                                    Integer initialWeight) {
         sym = new SymmetryBreaker(checkSymmetry, calculateCountWeight, initialWeight);
@@ -91,6 +102,7 @@ public class Solver<E> {
         // Evaluate domain and value
         for (Map.Entry<String, VariableBind> e : variableBinds.entrySet()) {
             List<Integer> dom = e.getValue().applyDomain(parameters);
+            dom.add(0, dom.size());
             Object val = e.getValue().apply(parameters);
             Integer[] v;
             if (val instanceof Integer[]) v = (Integer[]) val;
@@ -142,7 +154,11 @@ public class Solver<E> {
         this.eval = eval;
         this.best = (this.solType == Problem.MAX) ? Integer.MIN_VALUE : Integer.MAX_VALUE;
         // Create decisions
-        this.decisions = IntStream.range(0, total).boxed().toArray(Integer[]::new);
+        if (randomize) {
+            List<Integer> decisions = IntStream.range(0, total).boxed().collect(Collectors.toList());
+            Collections.shuffle(decisions);
+            this.decisions = decisions.toArray(Integer[]::new);
+        } else this.decisions = IntStream.range(0, total).boxed().toArray(Integer[]::new);
         this.indexVariables();
         // Map variable names to possible domains, for every single list element
         Map<String, Integer[][]> domains = this.variables.entrySet().stream()
@@ -193,7 +209,7 @@ public class Solver<E> {
             Integer elementIndex = currPair.eid;
             Integer[] currDomain = domains.get(nextVarDecision)[elementIndex];
             // For each possible value in domain, build next state
-            for (int i = 0; i < currDomain.length; i++) {
+            for (int i = 1; i < currDomain.length; i++) {
                 // Early return if satisfy is solved
                 if (solType == Problem.SATISFY && sol.count >= 1) break;
                 // Skip invalidated decisions
@@ -208,15 +224,16 @@ public class Solver<E> {
                     return varValue;
                 });
                 // New domain for future children
-                AtomicInteger k = new AtomicInteger(0);
                 Map<String, Integer[][]> newDomain = domains.entrySet().stream()
                         .collect(Collectors.toMap(Map.Entry::getKey, v -> Arrays.stream(v.getValue())
-                                .map(arr -> {
-                                    if (elementIndex.equals(k.getAndIncrement())) return arr;
-                                    return Arrays.copyOf(arr, arr.length);
-                                }).toArray(Integer[][]::new)));
+                                .map(arr -> Arrays.copyOf(arr, arr.length)).toArray(Integer[][]::new)));
                 // If one of the domains becomes empty, then impossible to solve -> skip branch
                 if (propagate(nextVarDecision, elementIndex, currDomain[i], newDomain)) continue;
+                // Variable selection -> most-constrained-variable heuristic
+                if (most_constrained) Arrays.sort(this.decisions, level + 1, total, Comparator.comparing(n -> {
+                    Pair curr = index[n];
+                    return newDomain.get(curr.var)[curr.eid][0];
+                }));
                 // Continue with next decisions
                 solve(values, newDomain, level + 1, (sym == null) ? weight : sym.calculateCountWeight.apply(
                         this.parameters, nextVarDecision, elementIndex, currDomain[i], weight));
