@@ -1,8 +1,6 @@
 import solver.Bind;
 import solver.CSolution;
-import solver.Constraint;
 import solver.Problem;
-import solver.PropagatorFunction;
 import solver.Solver;
 import solver.VariableBind;
 
@@ -45,35 +43,31 @@ public class Sudoku {
                 new int[]{8, -1, 1, -1, 18, 23, 3, -1, -1, -1, 17, 16, 13, 10, 15, 25, 20, 19, 6, 12, -1, 5, 24, -1, 21,},
         };
 
+        Map<String, Object> model = new HashMap<>();
+        model.put("N", grid.length);
+
         // Model board as N arrays of size N, i-th row called 'puzzle_i'
         List<String> fullVar = IntStream.range(0, grid.length).mapToObj(i -> "puzzle_" + i)
                 .collect(Collectors.toList());
-        int firstDecision = IntStream.range(0, grid.length).filter(i -> grid[0][i] != -1)
-                .findFirst().orElse(0);
 
         Solver<int[][]> solver = new Solver<int[][]>()
                 .addParameter("N", null)
                 .addParameter("n", new Bind(List.of("N"), (l) -> (int) Math.sqrt((int) l.get(0))))
-                .setVariableSelection(false, true, firstDecision)
+                .setVariableSelection(false, true)
                 // Setter constraint -> any provided values must be enforced on domains
-                .addConstraint(new Constraint(List.of(), fullVar, (p, v) -> true, new PropagatorFunction() {
-                    @Override
-                    public Boolean apply(Map<String, Object> params, String var, Integer idx, Integer decision,
-                                         Map<String, Integer[][]> domains) {
-                        // Propagate only once
-                        if (firstDecision != Integer.parseInt(var.substring(7)) * grid.length + idx)
-                            return false;
-                        // Skip unfruitful decision chains
-                        if (grid[Integer.parseInt(var.substring(7))][idx] != -1 &&
-                                grid[Integer.parseInt(var.substring(7))][idx] != decision) return true;
-                        for (int n = 0; n < grid.length; n++) {
-                            Integer[][] v = domains.get("puzzle_" + n);
-                            for (int i = 0; i < v.length; i++)
-                                if (grid[n][i] != -1) v[i] = new Integer[]{1, grid[n][i]};
-                        }
-                        return false;
+                .addConstraint(List.of(), fullVar, (p, v) -> true, (params, var, idx, decision, domains) -> {
+                    // Propagate only once
+                    if (domains.get(var)[idx].length == 1) return false;
+                    // Skip unfruitful decision chains
+                    if (grid[Integer.parseInt(var.substring(7))][idx] != -1 &&
+                            grid[Integer.parseInt(var.substring(7))][idx] != decision) return true;
+                    for (int n = 0; n < grid.length; n++) {
+                        Integer[][] v = domains.get("puzzle_" + n);
+                        for (int i = 0; i < v.length; i++)
+                            if (grid[n][i] != -1) v[i] = new Integer[]{1, grid[n][i]};
                     }
-                }));
+                    return false;
+                });
 
         // Apply the row-based constraints for each row separately
         for (int i = 0; i < grid.length; i++) {
@@ -85,27 +79,22 @@ public class Sudoku {
                     .addConstraint("puzzle_" + i, "alldiff", -1);
         }
 
-        solver
-                // Sudoku rule #2: All numbers in a column are different
-                .addConstraint(new Constraint(List.of(), fullVar, (p, v) -> {
+        // Sudoku rule #2: All numbers in a column are different
+        solver.addConstraint(List.of(), fullVar, (p, v) -> {
                     for (int col = 0; col < v.size(); col++)
                         for (int row1 = 0; row1 < v.size(); row1++)
                             for (int row2 = row1 + 1; row2 < v.size(); row2++)
                                 if (v.get(row1)[col].equals(v.get(row2)[col])) return false;
                     return true;
-                }, new PropagatorFunction() {
-                    @Override
-                    public Boolean apply(Map<String, Object> params, String var, Integer idx, Integer decision,
-                                         Map<String, Integer[][]> domains) {
-                        for (Map.Entry<String, Integer[][]> rowEntry : domains.entrySet()) {
-                            if (rowEntry.getKey().equals(var)) continue;
-                            if (findRepeatedEntries(rowEntry.getValue()[idx], decision)) return true;
-                        }
-                        return false;
+                }, (params, var, idx, decision, domains) -> {
+                    for (Map.Entry<String, Integer[][]> rowEntry : domains.entrySet()) {
+                        if (rowEntry.getKey().equals(var)) continue;
+                        if (findRepeatedEntries(rowEntry.getValue()[idx], decision)) return true;
                     }
-                }))
+                    return false;
+                })
                 // Sudoku rule #3: All numbers in an NxN area are different
-                .addConstraint(new Constraint(List.of("n"), fullVar, (p, v) -> {
+                .addConstraint(List.of("n"), fullVar, (p, v) -> {
                     int n = (int) p.get(0);
                     for (int row = 0; row < n; row++)
                         for (int col = 0; col < n; col++) {
@@ -116,25 +105,18 @@ public class Sudoku {
                             if (section.stream().distinct().count() != section.size()) return false;
                         }
                     return true;
-                }, new PropagatorFunction() {
-                    @Override
-                    public Boolean apply(Map<String, Object> params, String var, Integer idx, Integer decision,
-                                         Map<String, Integer[][]> domains) {
-                        int row = Integer.parseInt(var.substring(7)), n = (Integer) params.get("n");
-                        // Find NxN region of decided variable
-                        int rowIdx = row / n, colIdx = idx / n;
-                        for (int row2 = 0; row2 < n * n; row2++) {
-                            // Only update rows within same rowIdx (that are part of same section)
-                            if (row2 / n != rowIdx || row == row2) continue;
-                            for (int col = colIdx * n; col < (colIdx + 1) * n; col++)
-                                if (findRepeatedEntries(domains.get("puzzle_" + row2)[col], decision)) return true;
-                        }
-                        return false;
+                }, (params, var, idx, decision, domains) -> {
+                    int row = Integer.parseInt(var.substring(7)), n = (Integer) params.get("n");
+                    // Find NxN region of decided variable
+                    int rowIdx = row / n, colIdx = idx / n;
+                    for (int row2 = 0; row2 < n * n; row2++) {
+                        // Only update rows within same rowIdx (that are part of same section)
+                        if (row2 / n != rowIdx || row == row2) continue;
+                        for (int col = colIdx * n; col < (colIdx + 1) * n; col++)
+                            if (findRepeatedEntries(domains.get("puzzle_" + row2)[col], decision)) return true;
                     }
-                }));
-
-        Map<String, Object> model = new HashMap<>();
-        model.put("N", grid.length);
+                    return false;
+                });
 
         CSolution<int[][]> res = solver.solve(model, Problem.SATISFY, m ->
                 IntStream.range(0, grid.length).mapToObj(i ->

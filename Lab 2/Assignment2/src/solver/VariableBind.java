@@ -7,12 +7,8 @@ import java.util.stream.Collectors;
 
 // Binds string arguments to values based on f
 public class VariableBind extends Bind {
-
-    // Bound arguments (as string names)
-    List<String> domainArgs;
-
-    // Function to evaluate
-    Function<List<Object>, List<Integer>> domainF;
+    List<String> domainArgs; // Bound arguments (as string names)
+    Function<List<Object>, List<Integer>> domainF; // Function to evaluate domain bind
 
     public VariableBind(List<String> domainArgs, Function<List<Object>, List<Integer>> domainF,
                         List<String> args, Function<List<Object>, ?> f) {

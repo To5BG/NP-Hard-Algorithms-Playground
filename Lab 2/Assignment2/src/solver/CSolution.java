@@ -1,11 +1,10 @@
 package solver;
 
 import java.util.ArrayList;
+import java.util.List;
 
 public class CSolution<T> {
-
-    public ArrayList<T> solutions;
-
+    public List<T> solutions;
     public Integer count;
 
     public CSolution() {

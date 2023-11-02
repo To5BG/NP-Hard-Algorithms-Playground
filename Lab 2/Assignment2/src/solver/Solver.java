@@ -7,53 +7,27 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 public class Solver<E> {
-
-    // Binds a parameter name to a bind for its value
-    Map<String, Bind> parameterBinds;
-    // Binds a parameter name to input values
-    Map<String, Object> parameters;
-    // Binds a variable name to a variable bind ({ domain bind, size bind })
-    Map<String, VariableBind> variableBinds;
-    // Binds a variable name to wrapper class
-    Map<String, Variable> variables;
-    // Store variable names separate for optimization
-    List<String> variableNames;
-    // List of constraints to apply
-    List<Constraint> constraints;
-    // Total number of variables, min/max score for MIN/MAX problems, and setter for first decision
-    Integer total, best, firstDecision;
-    // Type of problem to solve
-    Problem solType;
-    // Solution object - cache in case of repetitive solver queries
-    CSolution<E> sol;
-    // Transform solved variables in desired form
-    Function<Map<String, Integer[]>, E> transform;
-    // Evaluate weight in case of MIN/MAX solve
-    Function<E, Integer> eval;
-    // List of decisions to take
-    Integer[] decisions;
-    // Maps decision to (variable, varIdx) pair
-    Pair[] index;
-    // Bound symmetry breaker
-    SymmetryBreaker sym;
-    // Used for variable selection -> whether to randomize decisions / whether to use most-constrained heuristic
-    Boolean randomize, most_constrained;
-
-    public Solver() {
-        this.parameterBinds = new HashMap<>();
-        this.variableBinds = new HashMap<>();
-        this.parameters = new HashMap<>();
-        this.variables = new HashMap<>();
-        this.variableNames = new ArrayList<>();
-        this.constraints = new ArrayList<>();
-        this.randomize = this.most_constrained = false;
-        this.firstDecision = 0;
-    }
+    Map<String, Bind> parameterBinds = new HashMap<>(); // Binds a parameter name ({ value bind })
+    Map<String, Object> parameters = new HashMap<>(); // Binds a parameter name to input values
+    Map<String, VariableBind> variableBinds = new HashMap<>(); // Binds a variable name ({ domain bind, size bind })
+    Map<String, Variable> variables = new HashMap<>(); // Binds a variable name to wrapper class
+    List<String> variableNames = new ArrayList<>(); // Store variable names separate for optimization
+    List<Constraint> constraints = new ArrayList<>(); // List of constraints to apply
+    Integer total, best; // Total number of variables and min/max score for MIN/MAX problems
+    Problem solType; // Type of problem to solve
+    CSolution<E> sol; // Solution object - cache in case of repetitive solver queries
+    Function<Map<String, Integer[]>, E> transform; // Transform solved variables in desired form
+    Function<E, Integer> eval; // Evaluate weight in case of MIN/MAX solve
+    Integer[] decisions; // List of decisions to take
+    Pair[] index; // Maps decision to (variable, varIdx) pair
+    SymmetryBreaker sym; // Bound symmetry breaker
+    Boolean randomize = false, constrH = false; // Random decisions / most-constrained heuristic
 
     public Solver<E> addParameter(String name, Bind p) {
         this.parameterBinds.put(name, p);
@@ -70,26 +44,31 @@ public class Solver<E> {
         return this;
     }
 
-    public Solver<E> addConstraint(String var, PropagatorFunction pf) {
+    public Solver<E> addConstraint(String var, PentaFunction<
+            Map<String, Object>, String, Integer, Integer, Map<String, Integer[][]>, Boolean> pf) {
         constraints.add(new Constraint(var, pf));
         return this;
     }
 
-    public Solver<E> addConstraint(Constraint constr) {
-        constraints.add(constr);
+    public Solver<E> addConstraint(List<String> par, List<String> var,
+                                   BiFunction<List<Object>, List<Integer[]>, Boolean> constr, PentaFunction<
+            Map<String, Object>, String, Integer, Integer, Map<String, Integer[][]>, Boolean> pf) {
+        constraints.add(new Constraint(par, var, constr, pf));
         return this;
     }
 
-    public Solver<E> setVariableSelection(Boolean randomize, Boolean most_constrained, int firstDecision) {
+    public Solver<E> setVariableSelection(Boolean randomize, Boolean most_constrained) {
         this.randomize = randomize;
-        this.most_constrained = most_constrained;
-        this.firstDecision = firstDecision;
+        this.constrH = most_constrained;
         return this;
     }
 
-    public void addSymmetryBreaker(SymmetryCheckFunction checkSymmetry, SymmetryWeightFunction calculateCountWeight,
-                                   Integer initialWeight) {
+    public Solver<E> addSymmetryBreaker(PentaFunction<Map<String, Object>, String, Integer, Integer, Integer[], Boolean>
+                                                checkSymmetry,
+                                        PentaFunction<Map<String, Object>, String, Integer, Integer, Integer, Integer>
+                                                calculateCountWeight, Integer initialWeight) {
         sym = new SymmetryBreaker(checkSymmetry, calculateCountWeight, initialWeight);
+        return this;
     }
 
     // Loads model by binding input values to parameters and variables
@@ -118,30 +97,26 @@ public class Solver<E> {
 
     // Propagate all constraints that have a propagator
     private boolean propagate(String var, Integer idx, Integer decision, Map<String, Integer[][]> domains) {
-        boolean isEmpty = false;
         for (Constraint e : this.constraints) {
-            if (isEmpty) break;
             if (e.variableNames.contains(var) && e.propFunc != null)
-                isEmpty = e.propFunc.apply(this.parameters, var, idx, decision, domains);
+                if (e.propFunc.propagate(this.parameters, var, idx, decision, domains)) return true;
         }
-        return isEmpty;
-    }
-
-    // Helper for indexing variables (turned every combined index into (variable, varIdx) pair
-    private void indexVariables() {
-        List<Pair> idx = new ArrayList<>();
-        for (String var : this.variableNames) {
-            int varLength = this.variables.get(var).value.length;
-            for (int varIdx = 0; varIdx < varLength; varIdx++)
-                idx.add(new Pair(var, varIdx));
-        }
-        this.index = idx.toArray(Pair[]::new);
+        return false;
     }
 
     // Tests all constraints with given parameters and picked variables
     private boolean testSatisfy(Map<String, Integer[]> test) {
-        for (Constraint c : this.constraints) if (!c.apply(this.parameters, test)) return false;
+        for (Constraint c : this.constraints) if (!c.check(this.parameters, test)) return false;
         return true;
+    }
+
+    // Helper for indexing variables (turned every combined index into (variable, varIdx) pair
+    private void indexVariables() {
+        List<Pair> idxList = new ArrayList<>();
+        for (String var : this.variableNames)
+            for (int varIdx = 0; varIdx < this.variables.get(var).val.length; varIdx++)
+                idxList.add(new Pair(var, varIdx));
+        this.index = idxList.toArray(Pair[]::new);
     }
 
     public CSolution<E> solve(Map<String, Object> model, Problem sol, Function<Map<String, Integer[]>, E> transform,
@@ -160,26 +135,19 @@ public class Solver<E> {
             List<Integer> decisions = IntStream.range(0, total).boxed().collect(Collectors.toList());
             Collections.shuffle(decisions);
             this.decisions = decisions.toArray(Integer[]::new);
-        } else {
-            this.decisions = IntStream.range(0, total).boxed().toArray(Integer[]::new);
-            this.decisions[firstDecision] = 0;
-            this.decisions[0] = firstDecision;
-        }
+        } else this.decisions = IntStream.range(0, total).boxed().toArray(Integer[]::new);
         this.indexVariables();
-        // Map variable names to possible domains, for every single list element
-        Map<String, Integer[][]> domains = this.variables.entrySet().stream()
-                .collect(Collectors.toMap(Map.Entry::getKey, e -> {
-                    Variable var = e.getValue();
-                    return IntStream.range(0, var.value.length).mapToObj(i -> var.domain.toArray(Integer[]::new))
-                            .toArray(Integer[][]::new);
-                }));
-        // Map variable names to initial values
-        Map<String, Integer[]> init = this.variables.entrySet().stream().collect(
-                Collectors.toMap(Map.Entry::getKey, i -> i.getValue().value));
         // Track solve time
         long time = System.currentTimeMillis();
         // Start solution
-        solve(init, domains, 0, (this.sym == null) ? 1 : this.sym.initialWeight);
+        solve(// Map variable names to initial values
+                this.variables.entrySet().stream().collect(Collectors.toMap(Map.Entry::getKey, i -> i.getValue().val)),
+                // Map variable names to possible domains, for every single list element
+                this.variables.entrySet().stream().collect(Collectors.toMap(Map.Entry::getKey, e -> {
+                    Variable var = e.getValue();
+                    return IntStream.range(0, var.val.length).mapToObj(i -> var.domain.toArray(Integer[]::new))
+                            .toArray(Integer[][]::new);
+                })), 0, (this.sym == null) ? 1 : this.sym.initialWeight);
         System.out.println("Solved in: " + (System.currentTimeMillis() - time) + "ms");
         return this.sol;
     }
@@ -192,28 +160,23 @@ public class Solver<E> {
             if (this.solType != Problem.COUNT) {
                 // Transform entry and add to solution pool
                 E transformed = this.transform.apply(values);
-                switch (this.solType) {
-                    case SATISFY:
-                    case ALL:
-                        this.sol.solutions.add(transformed);
-                        break;
-                    case MIN:
-                    case MAX:
-                        Integer scr = this.eval.apply(transformed);
-                        if ((this.solType == Problem.MIN) ? scr < this.best : scr > this.best) {
-                            this.sol.solutions.set(0, transformed);
-                            this.best = scr;
-                        }
-                        break;
+                if (this.solType == Problem.SATISFY || this.solType == Problem.ALL)
+                    this.sol.solutions.add(transformed);
+                else {
+                    Integer scr = this.eval.apply(transformed);
+                    if ((this.solType == Problem.MIN) ? scr < this.best : scr > this.best) {
+                        this.sol.solutions = List.of(transformed);
+                        this.best = scr;
+                    }
                 }
             }
             this.sol.count += weight;
         } else {
             // Find variable name and index within it for future use
             Pair currPair = index[decisions[level]];
-            String nextVarDecision = currPair.var;
-            Integer elementIndex = currPair.eid;
-            Integer[] currDomain = domains.get(nextVarDecision)[elementIndex];
+            String nextVar = currPair.var;
+            Integer elIndex = currPair.eid;
+            Integer[] currDomain = domains.get(nextVar)[elIndex];
             // For each possible value in domain, build next state
             for (int i = 1; i < currDomain.length; i++) {
                 // Early return if satisfy is solved
@@ -221,12 +184,12 @@ public class Solver<E> {
                 // Skip invalidated decisions
                 if (currDomain[i] == Integer.MIN_VALUE) continue;
                 // If symmetric, skip branch generation
-                if (sym != null && sym.checkSymmetry.apply(this.parameters, nextVarDecision, elementIndex,
-                        currDomain[i], currDomain)) continue;
+                if (sym != null && sym.checkSymmetry.propagate(this.parameters, nextVar, elIndex, currDomain[i],
+                        currDomain)) continue;
                 int finalI = i;
                 // Take decision
-                values.computeIfPresent(nextVarDecision, (varName, varValue) -> {
-                    varValue[elementIndex] = currDomain[finalI];
+                values.computeIfPresent(nextVar, (varName, varValue) -> {
+                    varValue[elIndex] = currDomain[finalI];
                     return varValue;
                 });
                 // New domain for future children
@@ -234,15 +197,15 @@ public class Solver<E> {
                         .collect(Collectors.toMap(Map.Entry::getKey, v -> Arrays.stream(v.getValue())
                                 .map(arr -> Arrays.copyOf(arr, arr.length)).toArray(Integer[][]::new)));
                 // If one of the domains becomes empty, then impossible to solve -> skip branch
-                if (propagate(nextVarDecision, elementIndex, currDomain[i], newDomain)) continue;
+                if (propagate(nextVar, elIndex, currDomain[i], newDomain)) continue;
                 // Variable selection -> most-constrained-variable heuristic
-                if (most_constrained) Arrays.sort(this.decisions, level + 1, total, Comparator.comparing(n -> {
+                if (constrH) Arrays.sort(this.decisions, level + 1, total, Comparator.comparing(n -> {
                     Pair curr = index[n];
                     return newDomain.get(curr.var)[curr.eid][0];
                 }));
                 // Continue with next decisions
-                solve(values, newDomain, level + 1, (sym == null) ? weight : sym.calculateCountWeight.apply(
-                        this.parameters, nextVarDecision, elementIndex, currDomain[i], weight));
+                solve(values, newDomain, level + 1, (sym == null) ? weight : sym.calculateCountWeight.propagate(
+                        this.parameters, nextVar, elIndex, currDomain[i], weight));
             }
         }
     }

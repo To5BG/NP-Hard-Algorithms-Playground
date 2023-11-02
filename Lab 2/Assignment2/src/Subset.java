@@ -12,22 +12,19 @@ import java.util.stream.IntStream;
 
 public class Subset {
     public static void main(String[] args) {
-        Solver<int[]> s = new Solver<int[]>()
-                .addParameter("N", null)
+        Map<String, Object> model = new HashMap<>();
+        model.put("N", 20);
 
+        CSolution<int[]> res = new Solver<int[]>()
+                .addParameter("N", null)
                 .addVariable("comb", new VariableBind(
                         List.of("N"), i -> IntStream.rangeClosed(0, (Integer) i.get(0))
                         .boxed().collect(Collectors.toList()),
                         List.of("N"), i -> new Integer[(Integer) i.get(0)]))
-
                 .addConstraint("comb", "alldiff", 0)
-                .addConstraint("comb", "decrease", -1);
-
-        Map<String, Object> model = new HashMap<>();
-        model.put("N", 18);
-
-        CSolution<int[]> res = s.solve(model, Problem.ALL, m ->
-                Arrays.stream(m.get("comb")).filter(i -> i != 0).mapToInt(Integer::intValue).toArray(), null);
+                .addConstraint("comb", "decrease", -1)
+                .solve(model, Problem.ALL, m -> Arrays.stream(m.get("comb")).filter(i -> i != 0)
+                        .mapToInt(Integer::intValue).toArray(), null);
 
         System.out.println("=====SOLUTION=====");
         System.out.println(res.count);

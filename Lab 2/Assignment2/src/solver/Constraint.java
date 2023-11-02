@@ -7,28 +7,23 @@ import java.util.stream.Collectors;
 
 // Constraint wrapper
 public class Constraint {
-
-    // Parameter arguments
-    List<String> parameterNames;
-
-    // Variable arguments
-    List<String> variableNames;
-
-    // Constraint function ((parameters, variable values) -> does it satisfy)
-    BiFunction<List<Object>, List<Integer[]>, Boolean> constr;
-
-    // Propagation function ((parameters, variable, element index, decision, full domain) -> can you propagate)
-    PropagatorFunction propFunc;
+    List<String> parameterNames; // Parameter arguments
+    List<String> variableNames; // Variable arguments
+    BiFunction<List<Object>, List<Integer[]>, Boolean> constr; // (parameters, variable values) -> does it satisfy
+    PentaFunction<Map<String, Object>, String, Integer, Integer, Map<String, Integer[][]>, Boolean> propFunc;
+    // (parameters, variable, element index, decision, full domain) -> can you propagate
 
     public Constraint(List<String> parameterNames, List<String> variableNames,
-                      BiFunction<List<Object>, List<Integer[]>, Boolean> constr, PropagatorFunction propFunc) {
+                      BiFunction<List<Object>, List<Integer[]>, Boolean> constr, PentaFunction<
+            Map<String, Object>, String, Integer, Integer, Map<String, Integer[][]>, Boolean> propFunc) {
         this.parameterNames = parameterNames;
         this.variableNames = variableNames;
         this.constr = constr;
         this.propFunc = propFunc;
     }
 
-    public Constraint(String variable, PropagatorFunction pf) {
+    public Constraint(String variable, PentaFunction<
+            Map<String, Object>, String, Integer, Integer, Map<String, Integer[][]>, Boolean> pf) {
         this(List.of(), List.of(variable), null, pf);
     }
 
@@ -36,7 +31,7 @@ public class Constraint {
         this(List.of(), List.of(variable), null, ConstraintPropagators.get(builtinConstraint, arg));
     }
 
-    public boolean apply(Map<String, Object> par, Map<String, Integer[]> var) {
+    public boolean check(Map<String, Object> par, Map<String, Integer[]> var) {
         if (this.constr == null) return true;
         return this.constr.apply(
                 this.parameterNames.stream().map(par::get).collect(Collectors.toList()),

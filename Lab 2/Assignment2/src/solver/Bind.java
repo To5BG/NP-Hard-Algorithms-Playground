@@ -7,12 +7,8 @@ import java.util.stream.Collectors;
 
 // Binds string arguments to values based on f
 public class Bind {
-
-    // Bound arguments (as string names)
-    List<String> args;
-
-    // Function to evaluate
-    Function<List<Object>, ?> f;
+    List<String> args; // Bound arguments (as string names)
+    Function<List<Object>, ?> f; // Function to evaluate value
 
     public Bind(List<String> args, Function<List<Object>, ?> f) {
         this.args = args;
