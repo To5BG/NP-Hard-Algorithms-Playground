@@ -35,7 +35,9 @@ public class Solver<E> {
     // Evaluate weight in case of MIN/MAX solve
     Function<E, Integer> eval;
     // List of decisions to take
-    List<Integer> decisions;
+    Integer[] decisions;
+    // Maps decision to (variable, varIdx) pair
+    Pair[] index;
     // Bound symmetry breaker
     SymmetryBreaker sym;
 
@@ -111,17 +113,15 @@ public class Solver<E> {
         return isEmpty;
     }
 
-    // helper for finding next variable within several variable arrays
-    private Pair getNext(int s) {
-        int varIndex = 0, varNum = 0;
-        while (true) {
-            if (varNum == this.variableNames.size()) break;
-            int next = this.variables.get(this.variableNames.get(varNum++)).value.length;
-            if (varIndex + next > s) break;
-            varIndex += next;
+    // Helper for indexing variables (turned every combined index into (variable, varIdx) pair
+    private void indexVariables() {
+        List<Pair> idx = new ArrayList<>();
+        for (String var : this.variableNames) {
+            int varLength = this.variables.get(var).value.length;
+            for (int varIdx = 0; varIdx < varLength; varIdx++)
+                idx.add(new Pair(var, varIdx));
         }
-        String name = this.variableNames.get(varNum - 1);
-        return new Pair(name, s - varIndex);
+        this.index = idx.toArray(Pair[]::new);
     }
 
     // Tests all constraints with given parameters and picked variables
@@ -134,7 +134,7 @@ public class Solver<E> {
                               Function<E, Integer> eval) {
         // If already computed, return old solution
         if (this.sol != null && this.solType != sol) return this.sol;
-        // find parameters/precompute variables by loading model
+        // Find parameters/precompute variables by loading model
         loadModel(model);
         this.solType = sol;
         this.sol = new CSolution<>();
@@ -142,35 +142,33 @@ public class Solver<E> {
         this.eval = eval;
         this.best = (this.solType == Problem.MAX) ? Integer.MIN_VALUE : Integer.MAX_VALUE;
         // Create decisions
-        this.decisions = IntStream.range(0, total).boxed().collect(Collectors.toList());
-        // Randomize decision TODO: Generalize with variable orders
-        //Collections.shuffle(this.decisions);
-        // map variable names to possible domains, for every single list element
+        this.decisions = IntStream.range(0, total).boxed().toArray(Integer[]::new);
+        this.indexVariables();
+        // Map variable names to possible domains, for every single list element
         Map<String, Integer[][]> domains = this.variables.entrySet().stream()
                 .collect(Collectors.toMap(Map.Entry::getKey, e -> {
                     Variable var = e.getValue();
                     return IntStream.range(0, var.value.length).mapToObj(i -> var.domain.toArray(Integer[]::new))
                             .toArray(Integer[][]::new);
                 }));
-        // map variable names to initial values
+        // Map variable names to initial values
         Map<String, Integer[]> init = this.variables.entrySet().stream().collect(
                 Collectors.toMap(Map.Entry::getKey, i -> i.getValue().value));
-        // track solve time
+        // Track solve time
         long time = System.currentTimeMillis();
-        // start solution
+        // Start solution
         solve(init, domains, 0, (this.sym == null) ? 1 : this.sym.initialWeight);
-        //solve(this.root, init, 0);
         System.out.println("Solved in: " + (System.currentTimeMillis() - time) + "ms");
         return this.sol;
     }
 
     private void solve(Map<String, Integer[]> values, Map<String, Integer[][]> domains, int level, int weight) {
-        // if all variables have been picked, check for satisfiability
+        // If all variables have been picked, check for satisfiability
         if (level == total) {
             if (!testSatisfy(values)) return;
-            // if count -> skip transforming/adding entry
+            // If count -> skip transforming/adding entry
             if (this.solType != Problem.COUNT) {
-                // transform entry and add to solution pool
+                // Transform entry and add to solution pool
                 E transformed = this.transform.apply(values);
                 switch (this.solType) {
                     case SATISFY:
@@ -190,9 +188,9 @@ public class Solver<E> {
             this.sol.count += weight;
         } else {
             // Find variable name and index within it for future use
-            Pair currPair = getNext(decisions.get(level));
-            String nextVarDecision = (String) currPair.l;
-            Integer elementIndex = (Integer) currPair.r;
+            Pair currPair = index[decisions[level]];
+            String nextVarDecision = currPair.var;
+            Integer elementIndex = currPair.eid;
             Integer[] currDomain = domains.get(nextVarDecision)[elementIndex];
             // For each possible value in domain, build next state
             for (int i = 0; i < currDomain.length; i++) {
