@@ -122,7 +122,8 @@ public class MyAgent extends ArtificialAgent {
             actions.add(0, curr.pa.getDirection());
             curr = curr.parent;
         }
-        System.out.println(Arrays.stream(dsd.skipped).mapToObj(i -> i + " ").reduce("", String::concat));
+        System.out.print(Arrays.stream(dsd.skipped).mapToObj(i -> i + " ").reduce("", String::concat));
+        System.out.println("risk: " + corralRisk);
         System.out.println(actions.stream().map(o -> o.toString().substring(0, 1)).collect(Collectors.joining()));
         return actions;
     }
@@ -279,7 +280,7 @@ public class MyAgent extends ArtificialAgent {
         // Detect freeze deadlocks (dynamic) - tiles from which a box cannot move, depends on other boxes
         public boolean detectFreeze(BoardSlim board, int x, int y, BoxPoint[] boxes) {
             // Return cached config if possible
-            String k = Arrays.stream(boxes).map(b -> b.x + "," + b.y + ",").reduce("", String::concat);
+            String k = boxConfig(boxes);
             if (freezeCache.containsKey(k)) return freezeCache.get(k);
             Set<Point> frozen = new HashSet<>();
             // Get all frozen blocks in curr config
@@ -321,7 +322,7 @@ public class MyAgent extends ArtificialAgent {
         public boolean detectCorral(BoardSlim board, int x, int y, int dx, int dy, BoxPoint[] boxes) {
             if (corralRisk == board.boxCount) return false;
             // Return cached config if possible
-            String k = Arrays.stream(boxes).map(b -> b.x + "," + b.y + ",").reduce("", String::concat);
+            String k = boxConfig(boxes);
             if (corralCache.containsKey(k)) return corralCache.get(k);
             // If neighboring tiles are not obstacles, cannot form a coral
             if ((board.tiles[x - dy][y - dx] & obst) == 0 || (board.tiles[x + dy][y + dx] & obst) == 0) return false;
@@ -402,5 +403,17 @@ public class MyAgent extends ArtificialAgent {
                 if ((STile.BOX_FLAG & board.tiles[i][j]) != 0) res.add(new BoxPoint(i, j, -1, -1));
         res.sort((l, r) -> l.x == r.x ? r.y - l.y : r.x - l.x);
         return res.toArray(BoxPoint[]::new);
+    }
+
+    // Helper for creating String concat of all boxes with StringBuilder
+    private static String boxConfig(BoxPoint[] bps) {
+        StringBuilder sb = new StringBuilder();
+        for (BoxPoint bp : bps) {
+            sb.append(48 + bp.x);
+            sb.append(',');
+            sb.append(48 + bp.y);
+            sb.append(',');
+        }
+        return sb.toString();
     }
 }
