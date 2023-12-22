@@ -110,7 +110,7 @@ public class Solver<E> {
         return true;
     }
 
-    // Helper for indexing variables (turned every combined index into (variable, varIdx) pair
+    // Helper for indexing variables (turn every combined index into (variable, varIdx) pair
     private void indexVariables() {
         List<Pair> idxList = new ArrayList<>();
         for (String var : this.variableNames)
@@ -122,7 +122,7 @@ public class Solver<E> {
     public CSolution<E> solve(Map<String, Object> model, Problem sol, Function<Map<String, Integer[]>, E> transform,
                               Function<E, Integer> eval) {
         // If already computed, return old solution
-        if (this.sol != null && this.solType != sol) return this.sol;
+        if (this.sol != null && this.solType == sol) return this.sol;
         // Find parameters/precompute variables by loading model
         loadModel(model);
         this.solType = sol;
