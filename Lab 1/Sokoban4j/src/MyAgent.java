@@ -97,7 +97,8 @@ public class MyAgent extends ArtificialAgent {
                 byte nextX = (byte) (next.board.playerX + dir.dX), nextY = (byte) (next.board.playerY + dir.dY);
                 BoxPoint mBox = null;
                 // Move player and, if push action, the box
-                if (action instanceof SPush) mBox = next.moveBox(nextX, nextY, nextX + dir.dX, nextY + dir.dY);
+                if (action instanceof SPush) mBox = next.moveBox(nextX, nextY, (byte) (nextX + dir.dX),
+                        (byte) (nextY + dir.dY));
                 next.board.movePlayer(next.board.playerX, next.board.playerY, nextX, nextY);
                 int newCost = curr.g + 1;
                 // Don't consider if it does not improve on previous distance or if it leads to an unsolvable position
@@ -181,8 +182,8 @@ public class MyAgent extends ArtificialAgent {
             return new Node(newBoxes, board.clone(), parent, pa, g, h);
         }
 
-        public BoxPoint moveBox(int x, int y, int tx, int ty) {
-            board.moveBox((byte) x, (byte) y, (byte) tx, (byte) ty);
+        public BoxPoint moveBox(byte x, byte y, byte tx, byte ty) {
+            board.moveBox(x, y, tx, ty);
             BoxPoint box = null;
             for (BoxPoint b : boxes)
                 if (b.x == x && b.y == y) {
