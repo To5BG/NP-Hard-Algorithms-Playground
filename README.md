@@ -1,6 +1,5 @@
-# CSE3300
-Coursework for CSE3300 Algorithms for NP-Hard Problems  
-This repository contains the group's solutions for three assigments, covering three topics in designing algorithms for NP-Hard problems:
+## Coursework for mastering algorithmic techniques on NP-Hard problems
+This repository contains solutions for three problems, covering three major topics in designing algorithms for NP-Hard problems:
 1. Heuristic Search - Sokoban AI solver
     * A* search, with *playerbox* state hashing
     * *Manhattan/Pythagorean* distance metric
