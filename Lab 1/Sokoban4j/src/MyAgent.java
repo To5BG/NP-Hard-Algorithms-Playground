@@ -143,11 +143,11 @@ public class MyAgent extends ArtificialAgent {
         // closest matching
         // update the closest matching
         double newDist = goals.stream().map(g -> Math.abs(changed.x - g.x) + Math.abs(changed.y - g.y))
-                .reduce(0, Integer::min);
+                .reduce(Integer.MAX_VALUE, Integer::min);
 
         // closest matching, Pythagorean
 //        double newDist = goals.stream().map(g -> Math.sqrt(Math.pow(changed.x - g.x, 2) + Math.pow(changed.y - g.y, 2)))
-//                .reduce(0.0, Double::min);
+//                .reduce(Double.MAX_VALUE, Double::min);
 
         double res = oldH - changed.dist;
         changed.dist = newDist;
