@@ -65,14 +65,15 @@ public class MyAgent extends ArtificialAgent {
 
     private List<EDirection> a_star(int maxCost, int corralRisk) {
         // Initialize
-        Map<Node, Integer> dist = new HashMap<>();
+        // Heuristic is consistent - first reach is optimal (set sufficient)
+        Set<String> vis = new HashSet<>();
         Queue<Node> q = new PriorityQueue<>();
         BoxPoint[] boxes = findBoxes(board);
         dsd.skipped = new int[]{0, 0, 0};
         dsd.corralRisk = corralRisk;
         boolean completed = false;
         Node start = new Node(boxes, board, null, null, 0, greedyMatching(boxes, goals));
-        dist.put(start, 0);
+        vis.add(stringConfig(start.boxes, new Point(start.board.playerX, start.board.playerY)));
         q.add(start);
         // A*
         Node curr = null;
@@ -81,6 +82,7 @@ public class MyAgent extends ArtificialAgent {
             searchedNodes++;
             // Guard clauses
             completed = curr.board.isVictory();
+            // Heuristic is admissible - first goal reach is optimal
             if (completed) break;
             if (curr.g > maxCost) continue;
             List<SAction> actions = new ArrayList<>(4);
@@ -101,13 +103,14 @@ public class MyAgent extends ArtificialAgent {
                         (byte) (nextY + dir.dY));
                 next.board.movePlayer(next.board.playerX, next.board.playerY, nextX, nextY);
                 int newCost = curr.g + 1;
+                String k = stringConfig(next.boxes, new Point(nextX, nextY));
                 // Don't consider if it does not improve on previous distance or if it leads to an unsolvable position
-                if (newCost + curr.h >= dist.getOrDefault(next, Integer.MAX_VALUE) || (action instanceof SPush &&
+                if (vis.contains(k) || (action instanceof SPush &&
                         (dsd.detectSimple(mBox.x, mBox.y) ||
                                 dsd.detectFreeze(next.board, mBox.x, mBox.y, next.boxes) ||
                                 dsd.detectCorral(next.board, mBox.x, mBox.y, dir.dX, dir.dY, next.boxes))))
                     continue;
-                dist.put(next, newCost);
+                vis.add(k);
                 // Update next state
                 next.parent = curr;
                 next.pa = action;
