@@ -112,7 +112,8 @@ public class MyAgent extends ArtificialAgent {
                 next.parent = curr;
                 next.pa = action;
                 next.g = newCost;
-                next.h = h(next.boxes, goals, mBox, curr.h);
+                next.h = singleH(goals, mBox, curr.h);
+//                next.h = fullH(next.boxes, goals, mBox, curr.h);
                 q.add(next);
             }
         }
@@ -129,29 +130,31 @@ public class MyAgent extends ArtificialAgent {
         return actions;
     }
 
-    // Heuristic function
-    private double h(BoxPoint[] boxes, List<Point> goals, BoxPoint changed, double oldH) {
+    // Heuristic function - single match
+    private double singleH(List<Point> goals, BoxPoint changed, double oldH) {
         // If boxes did not change, do not update
         if (changed == null) return oldH;
-
-        // greedy matching
-        // If distance to best goal gets large, update matching
-//        Point bestGoal = goals.get(changed.closestGoalId);
-//        int newDist = Math.abs(bestGoal.x - changed.x) + Math.abs(bestGoal.y - changed.y);
-//        for (BoxPoint b : boxes) if (b.dist < newDist) return greedyMatching(boxes, goals);
-
-        // closest matching
-        // update the closest matching
+        // Manhattan closest matching
         double newDist = goals.stream().map(g -> Math.abs(changed.x - g.x) + Math.abs(changed.y - g.y))
                 .reduce(Integer.MAX_VALUE, Integer::min);
-
-        // closest matching, Pythagorean
+        // Pythagorean closest matching
 //        double newDist = goals.stream().map(g -> Math.sqrt(Math.pow(changed.x - g.x, 2) + Math.pow(changed.y - g.y, 2)))
 //                .reduce(Double.MAX_VALUE, Double::min);
-
         double res = oldH - changed.dist;
         changed.dist = newDist;
         return res + changed.dist;
+    }
+
+    // Heuristic function - full match
+    private double fullH(BoxPoint[] boxes, List<Point> goals, BoxPoint changed, double oldH) {
+        // If boxes did not change, do not update
+        if (changed == null) return oldH;
+        // Greedy matching
+        // If distance to best goal gets large, update matching
+        Point bestGoal = goals.get(changed.closestGoalId);
+        int newDist = Math.abs(bestGoal.x - changed.x) + Math.abs(bestGoal.y - changed.y);
+        for (BoxPoint b : boxes) if (b.dist < newDist) return greedyMatching(boxes, goals);
+        return oldH;
     }
 
     // State
@@ -281,7 +284,7 @@ public class MyAgent extends ArtificialAgent {
         // Detect freeze deadlocks (dynamic) - tiles from which a box cannot move, depends on other boxes
         public boolean detectFreeze(BoardSlim board, int x, int y, BoxPoint[] boxes) {
             // Return cached config if possible
-            String k = boxConfig(boxes);
+            String k = stringConfig(boxes, null);
             if (freezeCache.containsKey(k)) return freezeCache.get(k);
             Set<Point> frozen = new HashSet<>();
             // Get all frozen blocks in curr config
@@ -323,7 +326,8 @@ public class MyAgent extends ArtificialAgent {
         public boolean detectCorral(BoardSlim board, int x, int y, int dx, int dy, BoxPoint[] boxes) {
             if (corralRisk == board.boxCount) return false;
             // Return cached config if possible
-            String k = boxConfig(boxes);
+            String k = stringConfig(boxes, null);
+//            String k = stringConfig(boxes, new Point(x - dx, y - dy));
             if (corralCache.containsKey(k)) return corralCache.get(k);
             // If neighboring tiles are not obstacles, cannot form a coral
             if ((board.tiles[x - dy][y - dx] & obst) == 0 || (board.tiles[x + dy][y + dx] & obst) == 0) return false;
@@ -406,14 +410,19 @@ public class MyAgent extends ArtificialAgent {
         return res.toArray(BoxPoint[]::new);
     }
 
-    // Helper for creating String concat of all boxes with StringBuilder
-    private static String boxConfig(BoxPoint[] bps) {
+    // Helper for creating String concat of all boxes (and player if given) with StringBuilder
+    private static String stringConfig(BoxPoint[] bps, Point playerPos) {
         StringBuilder sb = new StringBuilder();
         for (BoxPoint bp : bps) {
             sb.append(48 + bp.x);
             sb.append(',');
             sb.append(48 + bp.y);
             sb.append(',');
+        }
+        if (playerPos != null) {
+            sb.append(48 + playerPos.x);
+            sb.append(',');
+            sb.append(48 + playerPos.y);
         }
         return sb.toString();
     }
