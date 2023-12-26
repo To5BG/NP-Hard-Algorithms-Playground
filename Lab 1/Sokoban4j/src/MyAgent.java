@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.PriorityQueue;
 import java.util.Queue;
+import java.util.Random;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -34,13 +35,15 @@ public class MyAgent extends ArtificialAgent {
     protected int searchedNodes;
     private List<Point> goals;
     private DeadSquareDetector dsd;
+    private static Long[][][] zobrist_hashes;
 
     @Override
     protected List<EDirection> think(BoardCompact board) {
         this.board = board.makeBoardSlim();
-        this.searchedNodes = 0;
-        this.goals = findGoals(this.board);
-        this.dsd = new DeadSquareDetector(this.board);
+        searchedNodes = 0;
+        goals = findGoals(this.board);
+        dsd = new DeadSquareDetector(this.board);
+        init_zobrist(this.board);
 
         // Start from 1 (or higher) for less risky solver
         int corralRisk = 0, corralStep = 1, maxCost = 500;
@@ -66,14 +69,17 @@ public class MyAgent extends ArtificialAgent {
     private List<EDirection> a_star(int maxCost, int corralRisk) {
         // Initialize
         // Heuristic is consistent - first reach is optimal (set sufficient)
-        Set<String> vis = new HashSet<>();
+        Set<Long> vis = new HashSet<>();
         Queue<Node> q = new PriorityQueue<>();
         BoxPoint[] boxes = findBoxes(board);
         dsd.skipped = new int[]{0, 0, 0};
         dsd.corralRisk = corralRisk;
         boolean completed = false;
-        Node start = new Node(boxes, board, null, null, 0, greedyMatching(boxes, goals));
-        vis.add(stringConfig(start.boxes, new Point(start.board.playerX, start.board.playerY)));
+//        double startH = greedyMatching(dsd.dead, boxes, goals);
+        double startH = Arrays.stream(boxes).map(b -> goals.stream().map(g -> Math.abs(g.x - b.x) + Math.abs(g.y - b.y))
+                .reduce(Math::min).orElse(0)).reduce(Integer::sum).orElse(0);
+        Node start = new Node(boxes, board, null, null, 0, startH);
+        vis.add(start.hash);
         q.add(start);
         // A*
         Node curr = null;
@@ -101,16 +107,15 @@ public class MyAgent extends ArtificialAgent {
                 // Move player and, if push action, the box
                 if (action instanceof SPush) mBox = next.moveBox(nextX, nextY, (byte) (nextX + dir.dX),
                         (byte) (nextY + dir.dY));
-                next.board.movePlayer(next.board.playerX, next.board.playerY, nextX, nextY);
+                next.movePlayer(next.board.playerX, next.board.playerY, nextX, nextY);
                 int newCost = curr.g + 1;
-                String k = stringConfig(next.boxes, new Point(nextX, nextY));
                 // Don't consider if it does not improve on previous distance or if it leads to an unsolvable position
-                if (vis.contains(k) || (action instanceof SPush &&
-                        (dsd.detectSimple(mBox.x, mBox.y) ||
-                                dsd.detectFreeze(next.board, mBox.x, mBox.y, next.boxes) ||
-                                dsd.detectCorral(next.board, mBox.x, mBox.y, dir.dX, dir.dY, next.boxes))))
+                if (vis.contains(next.hash) || (action instanceof SPush &&
+                        (dsd.detectSimple(mBox.x, mBox.y)
+                                || dsd.detectFreeze(next.board, mBox.x, mBox.y, next.boxes))))
+//                                || dsd.detectCorral(next.board, mBox.x, mBox.y, dir.dX, dir.dY, next.boxes))))
                     continue;
-                vis.add(k);
+                vis.add(next.hash);
                 // Update next state
                 next.parent = curr;
                 next.pa = action;
@@ -123,7 +128,7 @@ public class MyAgent extends ArtificialAgent {
         // Backtracking to build action chain
         if (curr == null || !completed) return null;
         List<EDirection> actions = new LinkedList<>();
-        while (!curr.board.equals(this.board)) {
+        while (!curr.board.equals(board)) {
             actions.add(0, curr.pa.getDirection());
             curr = curr.parent;
         }
@@ -160,23 +165,41 @@ public class MyAgent extends ArtificialAgent {
         return oldH;
     }
 
+    private void init_zobrist(BoardSlim board) {
+        zobrist_hashes = new Long[2][board.width()][board.height()];
+        Random rand = new Random();
+        for (int i = 0; i < board.width(); i++)
+            for (int j = 0; j < board.height(); j++) {
+                zobrist_hashes[0][i][j] = rand.nextLong();
+                zobrist_hashes[1][i][j] = rand.nextLong();
+            }
+    }
+
     // State
     static class Node implements Comparable<Node>, Cloneable {
         BoxPoint[] boxes;
         BoardSlim board;
         Node parent;
         SAction pa;
-        int g, hash;
+        int g;
+        long hash;
         double h;
 
         public Node(BoxPoint[] boxes, BoardSlim board, Node parent, SAction pa, int g, double h) {
+            this(boxes, board, parent, pa, g, h, 0L);
+            for (BoxPoint b : boxes)
+                this.hash ^= zobrist_hashes[0][b.x][b.y];
+            this.hash ^= zobrist_hashes[1][board.playerX][board.playerY];
+        }
+
+        public Node(BoxPoint[] boxes, BoardSlim board, Node parent, SAction pa, int g, double h, Long hash) {
             this.boxes = boxes;
             this.board = board;
             this.parent = parent;
             this.pa = pa;
             this.g = g;
             this.h = h;
-            this.hash = -1;
+            this.hash = hash;
         }
 
         public Node clone() {
@@ -185,7 +208,13 @@ public class MyAgent extends ArtificialAgent {
                 BoxPoint box = boxes[i];
                 newBoxes[i] = new BoxPoint(box.x, box.y, box.dist, box.closestGoalId);
             }
-            return new Node(newBoxes, board.clone(), parent, pa, g, h);
+            return new Node(newBoxes, board.clone(), parent, pa, g, h, hash);
+        }
+
+        public void movePlayer(byte x, byte y, byte tx, byte ty) {
+            board.movePlayer(x, y, tx, ty);
+            hash ^= zobrist_hashes[1][x][y];
+            hash ^= zobrist_hashes[1][tx][ty];
         }
 
         public BoxPoint moveBox(byte x, byte y, byte tx, byte ty) {
@@ -198,21 +227,15 @@ public class MyAgent extends ArtificialAgent {
                     box.y = ty;
                     break;
                 }
-            Arrays.sort(boxes, (l, r) -> l.x == r.x ? r.y - l.y : r.x - l.x);
-            hash = -1;
+            hash ^= zobrist_hashes[0][x][y];
+            hash ^= zobrist_hashes[0][tx][ty];
             return box;
         }
 
         public boolean equals(Object c) {
             if (!(c instanceof Node)) return false;
             if (c == this) return true;
-            return this.hashCode() == c.hashCode();
-        }
-
-        public int hashCode() {
-            if (hash != -1) return hash;
-            return hash = (Arrays.stream(boxes).map(b -> b.x + "," + b.y + ",").reduce("", String::concat) +
-                    board.playerX + "," + board.playerY).hashCode();
+            return this.hash  == ((Node) c).hash;
         }
 
         public int compareTo(Node o) {
@@ -409,7 +432,6 @@ public class MyAgent extends ArtificialAgent {
         for (int i = 1; i < board.width() - 1; i++)
             for (int j = 1; j < board.height() - 1; j++)
                 if ((STile.BOX_FLAG & board.tiles[i][j]) != 0) res.add(new BoxPoint(i, j, -1, -1));
-        res.sort((l, r) -> l.x == r.x ? r.y - l.y : r.x - l.x);
         return res.toArray(BoxPoint[]::new);
     }
 
