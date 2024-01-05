@@ -79,9 +79,10 @@ public class SokobanMain {
 
 	public static void main(String[] args) throws Exception {
         String agentId = null;
-        // String className = null;
+//         String className = null;
         String className = "MyAgent";
-        // String levelset = null;
+//         String levelset = null;
+//        String levelset = "Lab 1/Sokoban4j/levels/easy.sok";
         String levelset = "Lab 1/Sokoban4j/levels/Aymeric_Hard.sok";
         int level = 0;
         int maxFail = 0;

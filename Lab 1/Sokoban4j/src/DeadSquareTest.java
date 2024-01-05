@@ -6,22 +6,20 @@ import game.board.slim.STile;
 
 public class DeadSquareTest {
     static void printLevelWithTargets(Board board) {
-		for (int y = 0; y < board.height; ++y) {
-			for (int x = 0; x < board.width; ++x) {
-				EPlace place = board.tiles[x][y].place;
-				ESpace space = board.tiles[x][y].space;
-				
-				if (place == EPlace.BOX_1) {
-					System.out.print('.');
-				} else
-				if (space != null) {
-					System.out.print(space.getSymbol());
-				} else {
-					System.out.print("?");
-				}
-			}
-			System.out.println();
-		}
+        for (int y = 0; y < board.height; ++y) {
+            for (int x = 0; x < board.width; ++x) {
+                EPlace place = board.tiles[x][y].place;
+                ESpace space = board.tiles[x][y].space;
+                if (place == EPlace.BOX_1) {
+                    System.out.print('.');
+                } else if (space != null) {
+                    System.out.print(space.getSymbol());
+                } else {
+                    System.out.print("?");
+                }
+            }
+            System.out.println();
+        }
     }
 
     public static void main(String[] args) {
@@ -32,26 +30,25 @@ public class DeadSquareTest {
         }
 
         System.out.printf("testing levels in %s\n\n", levels.getName());
-        for (int i = 1 ; i <= 10 ; ++i) {
+        for (int i = 1; i <= 10; ++i) {
             System.out.printf("== level %d ==\n\n", i);
             Board board = Board.fromFileSok(levels, i);
 
             printLevelWithTargets(board);
             System.out.println();
 
-            BoardSlim bc = board.makeBoardCompact().makeBoardSlim();
+            BoardSlim bs = board.makeBoardCompact().makeBoardSlim();
 
-            boolean[][] dead = MyAgent.DeadSquareDetector.detectSimple(bc);
+            boolean[][] dead = MyAgent.DeadSquareDetector.detectSimple(bs);
 
-            MyAgent.DeadSquareDetector dsd = new MyAgent.DeadSquareDetector(bc);
-            System.out.println("Freeze deadlock: " +
-                    (dsd.detectFreeze(bc, 4, 2, new MyAgent.BoxPoint[]{})));
-            System.out.println("Corral deadlock: " +
-                    (dsd.detectCorral(bc, 4, 5, 0, -1, new MyAgent.BoxPoint[]{})));
+            MyAgent.DeadSquareDetector dsd = new MyAgent.DeadSquareDetector(bs);
+
+            System.out.println("Freeze deadlock: " + (dsd.detectFreeze(bs, 4, 2, 0L)));
+            System.out.println("Corral deadlock: " + (dsd.detectCorral(bs, 4, 5, 0, -1, 0L)));
             System.out.println("dead squares: \n");
-            for (int y = 0 ; y < bc.height() ; ++y) {
-                for (int x = 0 ; x < bc.width() ; ++x)
-                    System.out.print((STile.WALL_FLAG & bc.tile(x, y)) != 0 ? '#' : (dead[x][y] ? 'X' : '_'));
+            for (int y = 0; y < bs.height(); ++y) {
+                for (int x = 0; x < bs.width(); ++x)
+                    System.out.print((STile.WALL_FLAG & bs.tile(x, y)) != 0 ? '#' : (dead[x][y] ? 'X' : '_'));
                 System.out.println();
             }
             System.out.println();
