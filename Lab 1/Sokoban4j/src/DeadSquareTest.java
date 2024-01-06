@@ -42,9 +42,11 @@ public class DeadSquareTest {
             boolean[][] dead = MyAgent.DeadSquareDetector.detectSimple(bs);
 
             MyAgent.DeadSquareDetector dsd = new MyAgent.DeadSquareDetector(bs);
+            MyAgent.BoxPoint[] boxes = MyAgent.findBoxes(bs);
 
-            System.out.println("Freeze deadlock: " + (dsd.detectFreeze(bs, 4, 2, 0L)));
-            System.out.println("Corral deadlock: " + (dsd.detectCorral(bs, 4, 5, 0, -1, 0L)));
+            System.out.println("Freeze deadlock: " + (dsd.detectFreeze(boxes, 4, 2, 0L)));
+            System.out.println("Corral deadlock: " + (dsd.detectCorral(boxes, 4, 5, 0, -1, bs.playerX,
+                    bs.playerY, 0L)));
             System.out.println("dead squares: \n");
             for (int y = 0; y < bs.height(); ++y) {
                 for (int x = 0; x < bs.width(); ++x)
