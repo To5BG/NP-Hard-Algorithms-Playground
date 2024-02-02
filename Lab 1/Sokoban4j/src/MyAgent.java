@@ -24,9 +24,9 @@ import game.board.slim.STile;
 
 
 /**
- * The simplest Tree-DFS agent.
+ * A* Agent
  *
- * @author Jimmy
+ * @author Alperen Guncan
  */
 public class MyAgent extends ArtificialAgent {
 
@@ -35,6 +35,7 @@ public class MyAgent extends ArtificialAgent {
     private List<Point> goals;
     private DeadSquareDetector dsd;
     private static Long[][][] zobrist_hashes;
+    static int[] dirs = new int[]{-1, 0, 1, 0};
 
     @Override
     protected List<EDirection> think(BoardCompact board) {
@@ -120,19 +121,20 @@ public class MyAgent extends ArtificialAgent {
             }
             // For each possible action
             for (SAction action : actions) {
-                Node next = curr.clone();
+                Node next = curr.copy();
                 EDirection dir = action.getDirection();
                 int nextX = curr.playerX + dir.dX, nextY = curr.playerY + dir.dY;
                 BoxPoint mBox = null;
                 // Move player and, if push action, the box
-                if (action instanceof SPush) mBox = next.moveBox(nextX, nextY, nextX + dir.dX, nextY + dir.dY);
+                boolean isPush = action instanceof SPush;
+                if (isPush) mBox = next.moveBox(nextX, nextY, nextX + dir.dX, nextY + dir.dY);
                 next.movePlayer(nextX, nextY);
                 int newCost = curr.g + 1;
                 // Don't consider if it does not improve on previous distance or if it leads to an unsolvable position
-                if (vis.contains(next.hashFull) || (action instanceof SPush && (dsd.detectSimple(mBox.x, mBox.y)
-                        || dsd.detectFreeze(next.boxes, mBox.x, mBox.y, next.hashBox)
-                        || dsd.detectCorral(next.boxes, mBox.x, mBox.y, dir.dX, dir.dY, next.playerX,
-                        next.playerY, next.hashFull))))
+                if (vis.contains(next.hashFull) || (isPush && (dsd.detectSimple(mBox.x, mBox.y)
+                        || dsd.detectFreeze(next.boxes, mBox.x, mBox.y, next.hashBox))))
+//                        || dsd.detectCorral(next.boxes, mBox.x, mBox.y, dir.dX, dir.dY, next.playerX,
+//                        next.playerY, next.hashFull))))
                     continue;
                 vis.add(next.hashFull);
                 // Update next state
@@ -169,7 +171,7 @@ public class MyAgent extends ArtificialAgent {
     }
 
     // State
-    static class Node implements Comparable<Node>, Cloneable {
+    static class Node implements Comparable<Node> {
         BoxPoint[] boxes;
         Node parent;
         SAction pa;
@@ -199,7 +201,7 @@ public class MyAgent extends ArtificialAgent {
             this.hashFull = hashFull;
         }
 
-        public Node clone() {
+        public Node copy() {
             BoxPoint[] newBoxes = new BoxPoint[boxes.length];
             for (int i = 0; i < boxes.length; i++) {
                 BoxPoint box = boxes[i];
@@ -257,7 +259,6 @@ public class MyAgent extends ArtificialAgent {
     // Class for finding dead squares
     static class DeadSquareDetector {
         boolean[][] dead;
-        static int[] dirs = new int[]{-1, 0, 1, 0};
         int[] skipped = new int[]{0, 0, 0};
         boolean corral = true;
         int corralRisk = 0, corralBoxes = 0, corralGoals = 0;

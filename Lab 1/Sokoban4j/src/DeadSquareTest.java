@@ -23,7 +23,7 @@ public class DeadSquareTest {
     }
 
     public static void main(String[] args) {
-        File levels = new File("Lab 1/Sokoban4j/levels/test.sok");
+        File levels = new File("Lab 1/Sokoban4j/levels/Aymeric_Hard.sok");
         if (!levels.canRead()) {
             System.out.printf("can't find level file %s\n", levels.getAbsolutePath());
             return;
@@ -39,6 +39,7 @@ public class DeadSquareTest {
 
             BoardSlim bs = board.makeBoardCompact().makeBoardSlim();
 
+            MyAgent.board = bs;
             MyAgent.DeadSquareDetector dsd = new MyAgent.DeadSquareDetector(bs);
             MyAgent.BoxPoint[] boxes = MyAgent.findBoxes(bs);
 
