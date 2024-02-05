@@ -3,6 +3,7 @@ import solver.Problem;
 import solver.Solver;
 import solver.VariableBind;
 
+import java.util.BitSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -24,31 +25,25 @@ public class NQueens {
                 // Constraints for diagonals
                 // Check that for no two queens q[i] + i == q[j] + j (or positive (/) diagonal)
                 .addConstraint("q", (params, var, idx, decision, domains) -> {
-                    Integer[][] v = domains.get(var);
+                    BitSet[] v = domains.get(var);
                     for (int i = 0; i < v.length; i++) {
                         if (idx == i) continue;
-                        Integer[] ll = v[i];
                         int removed = idx + decision - i;
-                        for (int j = 0; j < ll.length; j++)
-                            if (ll[j].equals(removed)) {
-                                ll[j] = Integer.MIN_VALUE;
-                                if (--ll[0] == 0) return true;
-                            }
+                        if (removed < 0) break;
+                        v[i].clear(removed);
+                        if (v[i].isEmpty()) return true;
                     }
                     return false;
                 })
                 // Check that for no two queens q[i] - i == q[j] - j (or negative (\) diagonal)
                 .addConstraint("q", (params, var, idx, decision, domains) -> {
-                    Integer[][] v = domains.get(var);
+                    BitSet[] v = domains.get(var);
                     for (int i = 0; i < v.length; i++) {
                         if (idx == i) continue;
-                        Integer[] ll = v[i];
                         int removed = decision - idx + i;
-                        for (int j = 0; j < ll.length; j++)
-                            if (ll[j].equals(removed)) {
-                                ll[j] = Integer.MIN_VALUE;
-                                if (--ll[0] == 0) return true;
-                            }
+                        if (removed < 0) continue;
+                        v[i].clear(removed);
+                        if (v[i].isEmpty()) return true;
                     }
                     return false;
                 })

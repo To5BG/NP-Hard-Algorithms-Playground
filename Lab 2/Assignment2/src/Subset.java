@@ -23,6 +23,7 @@ public class Subset {
                         List.of("N"), i -> new Integer[(Integer) i.get(0)]))
                 .addConstraint("comb", "alldiff", 0)
                 .addConstraint("comb", "decrease", -1)
+                .setVariableSelection(true, false)
                 .solve(model, Problem.ALL, m -> Arrays.stream(m.get("comb")).filter(i -> i != 0)
                         .mapToInt(Integer::intValue).toArray(), null);
 

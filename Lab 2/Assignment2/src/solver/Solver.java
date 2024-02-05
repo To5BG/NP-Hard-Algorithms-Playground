@@ -2,9 +2,11 @@ package solver;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.BitSet;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.function.BiFunction;
@@ -45,14 +47,14 @@ public class Solver<E> {
     }
 
     public Solver<E> addConstraint(String var, PentaFunction<
-            Map<String, Object>, String, Integer, Integer, Map<String, Integer[][]>, Boolean> pf) {
+            Map<String, Object>, String, Integer, Integer, Map<String, BitSet[]>, Boolean> pf) {
         constraints.add(new Constraint(var, pf));
         return this;
     }
 
     public Solver<E> addConstraint(List<String> par, List<String> var,
                                    BiFunction<List<Object>, List<Integer[]>, Boolean> constr, PentaFunction<
-            Map<String, Object>, String, Integer, Integer, Map<String, Integer[][]>, Boolean> pf) {
+            Map<String, Object>, String, Integer, Integer, Map<String, BitSet[]>, Boolean> pf) {
         constraints.add(new Constraint(par, var, constr, pf));
         return this;
     }
@@ -63,7 +65,7 @@ public class Solver<E> {
         return this;
     }
 
-    public Solver<E> addSymmetryBreaker(PentaFunction<Map<String, Object>, String, Integer, Integer, Integer[], Boolean>
+    public Solver<E> addSymmetryBreaker(PentaFunction<Map<String, Object>, String, Integer, Integer, List<Integer>, Boolean>
                                                 checkSymmetry,
                                         PentaFunction<Map<String, Object>, String, Integer, Integer, Integer, Integer>
                                                 calculateCountWeight, Integer initialWeight) {
@@ -82,12 +84,20 @@ public class Solver<E> {
         // Evaluate domain and value
         for (Map.Entry<String, VariableBind> e : variableBinds.entrySet()) {
             List<Integer> dom = e.getValue().applyDomain(parameters);
-            dom.add(0, dom.size());
+            // Fallacious design
+            if (dom.isEmpty())
+                throw new RuntimeException("Domain must be non-empty.");
+            if (new HashSet<>(dom).size() != dom.size())
+                throw new RuntimeException("Domain must contain unique values.");
+            // 'decrease' propagator requires sorted domain
+            dom.sort(Comparator.naturalOrder());
             Object val = e.getValue().apply(parameters);
             Integer[] v;
+            // Either an array, or a single value (also represented as array for simplicity)
             if (val instanceof Integer[]) v = (Integer[]) val;
             else v = new Integer[]{(Integer) val};
             this.total += v.length;
+            // MIN_VALUE <=> no decision yet
             Arrays.fill(v, Integer.MIN_VALUE);
             variables.put(e.getKey(), new Variable(dom, v));
             variableNames.add(e.getKey());
@@ -96,10 +106,10 @@ public class Solver<E> {
     }
 
     // Propagate all constraints that have a propagator
-    private boolean propagate(String var, Integer idx, Integer decision, Map<String, Integer[][]> domains) {
+    private boolean propagate(String var, Integer idx, Integer decision, Map<String, BitSet[]> domains) {
         for (Constraint e : this.constraints) {
             if (e.variableNames.contains(var) && e.propFunc != null)
-                if (e.propFunc.propagate(this.parameters, var, idx, decision, domains)) return true;
+                if (e.propFunc.apply(this.parameters, var, idx, decision, domains)) return true;
         }
         return false;
     }
@@ -119,6 +129,7 @@ public class Solver<E> {
         this.index = idxList.toArray(Pair[]::new);
     }
 
+    // Public solve - load model and initialization
     public CSolution<E> solve(Map<String, Object> model, Problem sol, Function<Map<String, Integer[]>, E> transform,
                               Function<E, Integer> eval) {
         // If already computed, return old solution
@@ -145,14 +156,19 @@ public class Solver<E> {
                 // Map variable names to possible domains, for every single list element
                 this.variables.entrySet().stream().collect(Collectors.toMap(Map.Entry::getKey, e -> {
                     Variable var = e.getValue();
-                    return IntStream.range(0, var.val.length).mapToObj(i -> var.domain.toArray(Integer[]::new))
-                            .toArray(Integer[][]::new);
+                    // Current variable domain represented as bitmask over full domain (stored in variable map)
+                    return IntStream.range(0, var.val.length).mapToObj(i -> {
+                        BitSet b = new BitSet(var.domain.size());
+                        b.flip(0, b.size());
+                        return b;
+                    }).toArray(BitSet[]::new);
                 })), 0, (this.sym == null) ? 1 : this.sym.initialWeight);
         System.out.println("Solved in: " + (System.currentTimeMillis() - time) + "ms");
         return this.sol;
     }
 
-    private void solve(Map<String, Integer[]> values, Map<String, Integer[][]> domains, int level, int weight) {
+    // Private solve - recursive part of search
+    private void solve(Map<String, Integer[]> values, Map<String, BitSet[]> domains, int level, int weight) {
         // If all variables have been picked, check for satisfiability
         if (level == total) {
             if (!testSatisfy(values)) return;
@@ -162,6 +178,7 @@ public class Solver<E> {
                 E transformed = this.transform.apply(values);
                 if (this.solType == Problem.SATISFY || this.solType == Problem.ALL)
                     this.sol.solutions.add(transformed);
+                    // Evaluate entry if MIN/MAX problem and conditionally add to solution pool
                 else {
                     Integer scr = this.eval.apply(transformed);
                     if ((this.solType == Problem.MIN) ? scr < this.best : scr > this.best) {
@@ -176,36 +193,37 @@ public class Solver<E> {
             Pair currPair = index[decisions[level]];
             String nextVar = currPair.var;
             Integer elIndex = currPair.eid;
-            Integer[] currDomain = domains.get(nextVar)[elIndex];
+            BitSet currDomain = domains.get(nextVar)[elIndex];
+            Variable var = variables.get(nextVar);
             // For each possible value in domain, build next state
-            for (int i = 1; i < currDomain.length; i++) {
+            for (int i = 0; i < var.domain.size(); i++) {
                 // Early return if satisfy is solved
                 if (solType == Problem.SATISFY && sol.count >= 1) break;
                 // Skip invalidated decisions
-                if (currDomain[i] == Integer.MIN_VALUE) continue;
+                if (!currDomain.get(i)) continue;
                 // If symmetric, skip branch generation
-                if (sym != null && sym.checkSymmetry.propagate(this.parameters, nextVar, elIndex, currDomain[i],
-                        currDomain)) continue;
-                int finalI = i;
-                // Take decision
-                values.computeIfPresent(nextVar, (varName, varValue) -> {
-                    varValue[elIndex] = currDomain[finalI];
-                    return varValue;
-                });
+                if (sym != null && sym.checkSymmetry.apply(this.parameters, nextVar, elIndex, i, var.domain))
+                    continue;
+                // Make decision
+                values.get(nextVar)[elIndex] = var.domain.get(i);
                 // New domain for future children
-                Map<String, Integer[][]> newDomain = domains.entrySet().stream()
-                        .collect(Collectors.toMap(Map.Entry::getKey, v -> Arrays.stream(v.getValue())
-                                .map(arr -> Arrays.copyOf(arr, arr.length)).toArray(Integer[][]::new)));
+                Map<String, BitSet[]> newDomain = domains.entrySet().stream()
+                        .collect(Collectors.toMap(Map.Entry::getKey, v -> {
+                            BitSet[] prev = v.getValue();
+                            BitSet[] res = new BitSet[prev.length];
+                            for (int j = 0; j < prev.length; j++) res[j] = (BitSet) prev[j].clone();
+                            return res;
+                        }));
                 // If one of the domains becomes empty, then impossible to solve -> skip branch
-                if (propagate(nextVar, elIndex, currDomain[i], newDomain)) continue;
+                if (propagate(nextVar, elIndex, i, newDomain)) continue;
                 // Variable selection -> most-constrained-variable heuristic
                 if (constrH) Arrays.sort(this.decisions, level + 1, total, Comparator.comparing(n -> {
                     Pair curr = index[n];
-                    return newDomain.get(curr.var)[curr.eid][0];
+                    return newDomain.get(curr.var)[curr.eid].cardinality();
                 }));
                 // Continue with next decisions
-                solve(values, newDomain, level + 1, (sym == null) ? weight : sym.calculateCountWeight.propagate(
-                        this.parameters, nextVar, elIndex, currDomain[i], weight));
+                solve(values, newDomain, level + 1, (sym == null) ? weight :
+                        sym.calculateCountWeight.apply(this.parameters, nextVar, elIndex, i, weight));
             }
         }
     }

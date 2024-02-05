@@ -17,7 +17,8 @@ public class Combinations {
         model.put("K", 2);
 
         CSolution<int[]> res = new Solver<int[]>()
-                .addParameter("N", null).addParameter("K", null)
+                .addParameter("N", null)
+                .addParameter("K", null)
                 .addVariable("comb", new VariableBind(
                         List.of("N"), i -> IntStream.rangeClosed(1, (Integer) i.get(0))
                         .boxed().collect(Collectors.toList()),

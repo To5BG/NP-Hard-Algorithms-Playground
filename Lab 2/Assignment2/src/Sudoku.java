@@ -5,6 +5,7 @@ import solver.Solver;
 import solver.VariableBind;
 
 import java.util.Arrays;
+import java.util.BitSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -15,7 +16,6 @@ public class Sudoku {
     public static void main(String[] args) {
 
         int[][] grid = new int[][]{
-                //size5_level50
                 new int[]{3, -1, 9, 12, -1, 14, -1, 7, -1, -1, 19, -1, -1, 17, 13, 18, -1, 6, 1, 20, -1, 4, -1, 24, 23,},
                 new int[]{-1, 11, 2, -1, 13, 9, -1, 8, 24, -1, 21, 6, -1, -1, -1, 17, -1, -1, 10, -1, -1, -1, -1, -1, -1,},
                 new int[]{-1, -1, -1, -1, 4, 2, -1, 3, -1, 10, -1, -1, 18, -1, 11, 22, -1, -1, -1, 8, 14, 19, 17, 6, 9,},
@@ -57,14 +57,17 @@ public class Sudoku {
                 // Setter constraint -> any provided values must be enforced on domains
                 .addConstraint(List.of(), fullVar, (p, v) -> true, (params, var, idx, decision, domains) -> {
                     // Propagate only once
-                    if (domains.get(var)[idx].length == 1) return false;
+                    if (domains.get(var)[idx].cardinality() == 1) return false;
                     // Skip unfruitful decision chains
                     if (grid[Integer.parseInt(var.substring(7))][idx] != -1 &&
-                            grid[Integer.parseInt(var.substring(7))][idx] != decision) return true;
+                            grid[Integer.parseInt(var.substring(7))][idx] != (decision + 1)) return true;
                     for (int n = 0; n < grid.length; n++) {
-                        Integer[][] v = domains.get("puzzle_" + n);
+                        BitSet[] v = domains.get("puzzle_" + n);
                         for (int i = 0; i < v.length; i++)
-                            if (grid[n][i] != -1) v[i] = new Integer[]{1, grid[n][i]};
+                            if (grid[n][i] != -1) {
+                                v[i].clear();
+                                v[i].set(grid[n][i] - 1);
+                            }
                     }
                     return false;
                 });
@@ -87,9 +90,11 @@ public class Sudoku {
                                 if (v.get(row1)[col].equals(v.get(row2)[col])) return false;
                     return true;
                 }, (params, var, idx, decision, domains) -> {
-                    for (Map.Entry<String, Integer[][]> rowEntry : domains.entrySet()) {
+                    for (Map.Entry<String, BitSet[]> rowEntry : domains.entrySet()) {
+                        BitSet curr = rowEntry.getValue()[idx];
                         if (rowEntry.getKey().equals(var)) continue;
-                        if (findRepeatedEntries(rowEntry.getValue()[idx], decision)) return true;
+                        curr.clear(decision);
+                        if (curr.isEmpty()) return true;
                     }
                     return false;
                 })
@@ -112,8 +117,11 @@ public class Sudoku {
                     for (int row2 = 0; row2 < n * n; row2++) {
                         // Only update rows within same rowIdx (that are part of same section)
                         if (row2 / n != rowIdx || row == row2) continue;
-                        for (int col = colIdx * n; col < (colIdx + 1) * n; col++)
-                            if (findRepeatedEntries(domains.get("puzzle_" + row2)[col], decision)) return true;
+                        BitSet[] curr = domains.get("puzzle_" + row2);
+                        for (int col = colIdx * n; col < (colIdx + 1) * n; col++) {
+                            curr[col].clear(decision);
+                            if (curr[col].isEmpty()) return true;
+                        }
                     }
                     return false;
                 });
@@ -129,15 +137,5 @@ public class Sudoku {
             for (int i : s) System.out.print(i + " ");
             System.out.println();
         }
-    }
-
-    // Helper to remove repeating decisions on an entry
-    private static boolean findRepeatedEntries(Integer[] entry, Integer decision) {
-        for (int i = 1; i < entry.length; i++)
-            if (entry[i].equals(decision)) {
-                entry[i] = Integer.MIN_VALUE;
-                if (--entry[0] == 0) return true;
-            }
-        return false;
     }
 }

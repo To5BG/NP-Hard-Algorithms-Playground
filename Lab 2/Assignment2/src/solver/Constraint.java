@@ -1,5 +1,6 @@
 package solver;
 
+import java.util.BitSet;
 import java.util.List;
 import java.util.Map;
 import java.util.function.BiFunction;
@@ -10,12 +11,12 @@ public class Constraint {
     List<String> parameterNames; // Parameter arguments
     List<String> variableNames; // Variable arguments
     BiFunction<List<Object>, List<Integer[]>, Boolean> constr; // (parameters, variable values) -> does it satisfy
-    PentaFunction<Map<String, Object>, String, Integer, Integer, Map<String, Integer[][]>, Boolean> propFunc;
+    PentaFunction<Map<String, Object>, String, Integer, Integer, Map<String, BitSet[]>, Boolean> propFunc;
     // (parameters, variable, element index, decision, full domain) -> can you propagate
 
     public Constraint(List<String> parameterNames, List<String> variableNames,
                       BiFunction<List<Object>, List<Integer[]>, Boolean> constr, PentaFunction<
-            Map<String, Object>, String, Integer, Integer, Map<String, Integer[][]>, Boolean> propFunc) {
+            Map<String, Object>, String, Integer, Integer, Map<String, BitSet[]>, Boolean> propFunc) {
         this.parameterNames = parameterNames;
         this.variableNames = variableNames;
         this.constr = constr;
@@ -23,7 +24,7 @@ public class Constraint {
     }
 
     public Constraint(String variable, PentaFunction<
-            Map<String, Object>, String, Integer, Integer, Map<String, Integer[][]>, Boolean> pf) {
+            Map<String, Object>, String, Integer, Integer, Map<String, BitSet[]>, Boolean> pf) {
         this(List.of(), List.of(variable), null, pf);
     }
 
