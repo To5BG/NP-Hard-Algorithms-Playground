@@ -3,6 +3,7 @@ import solver.Problem;
 import solver.Solver;
 import solver.VariableBind;
 
+import java.util.Arrays;
 import java.util.BitSet;
 import java.util.HashMap;
 import java.util.List;
@@ -19,7 +20,11 @@ public class NQueens {
                 .addParameter("N", null)
                 // Model board as an n-array, where q[i] = column of queen on ith row -> only one queen per row
                 .addVariable("q", new VariableBind(List.of("N"), i -> IntStream.range(0, (Integer) i.get(0))
-                        .boxed().collect(Collectors.toList()), List.of("N"), i -> new Integer[(Integer) i.get(0)]))
+                        .boxed().collect(Collectors.toList()), List.of("N"), i -> {
+                    Integer[] v = new Integer[(Integer) i.get(0)];
+                    Arrays.fill(v, Integer.MIN_VALUE);
+                    return v;
+                }))
                 // No queens on same column
                 .addConstraint("q", "alldiff", -1)
                 // Constraints for diagonals

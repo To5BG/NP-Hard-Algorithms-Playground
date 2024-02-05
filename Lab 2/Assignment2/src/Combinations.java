@@ -20,9 +20,13 @@ public class Combinations {
                 .addParameter("N", null)
                 .addParameter("K", null)
                 .addVariable("comb", new VariableBind(
-                        List.of("N"), i -> IntStream.rangeClosed(1, (Integer) i.get(0))
-                        .boxed().collect(Collectors.toList()),
-                        List.of("K"), i -> new Integer[(Integer) i.get(0)]))
+                        List.of("N"), i -> IntStream.rangeClosed(1, (Integer) i.get(0)).boxed()
+                        .collect(Collectors.toList()),
+                        List.of("K"), i -> {
+                    Integer[] v = new Integer[(Integer) i.get(0)];
+                    Arrays.fill(v, Integer.MIN_VALUE);
+                    return v;
+                }))
                 .addConstraint("comb", "decrease", -1)
                 .addConstraint("comb", "alldiff", -1)
                 .solve(model, Problem.ALL, m -> Arrays.stream(m.get("comb")).mapToInt(Integer::intValue).toArray(),

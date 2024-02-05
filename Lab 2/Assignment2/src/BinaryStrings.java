@@ -4,6 +4,7 @@ import solver.Solver;
 import solver.VariableBind;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -17,7 +18,11 @@ public class BinaryStrings {
         CSolution<String> res = new Solver<String>()
                 .addParameter("N", null)
                 .addVariable("bitstr", new VariableBind(List.of(), i -> new ArrayList<>(List.of(0, 1)),
-                        List.of("N"), i -> new Integer[(Integer) i.get(0)]))
+                        List.of("N"), i -> {
+                    Integer[] v = new Integer[(Integer) i.get(0)];
+                    Arrays.fill(v, Integer.MIN_VALUE);
+                    return v;
+                }))
                 .solve(model, Problem.ALL, m -> {
                     ss.setLength(0);
                     for (Integer i : m.get("bitstr")) ss.append(i);

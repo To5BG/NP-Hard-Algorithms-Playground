@@ -20,7 +20,11 @@ public class Subset {
                 .addVariable("comb", new VariableBind(
                         List.of("N"), i -> IntStream.rangeClosed(0, (Integer) i.get(0))
                         .boxed().collect(Collectors.toList()),
-                        List.of("N"), i -> new Integer[(Integer) i.get(0)]))
+                        List.of("N"), i -> {
+                    Integer[] v = new Integer[(Integer) i.get(0)];
+                    Arrays.fill(v, Integer.MIN_VALUE);
+                    return v;
+                }))
                 .addConstraint("comb", "alldiff", 0)
                 .addConstraint("comb", "decrease", -1)
                 .setVariableSelection(true, false)

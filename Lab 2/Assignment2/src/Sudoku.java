@@ -53,31 +53,22 @@ public class Sudoku {
         Solver<int[][]> solver = new Solver<int[][]>()
                 .addParameter("N", null)
                 .addParameter("n", new Bind(List.of("N"), (l) -> (int) Math.sqrt((int) l.get(0))))
-                .setVariableSelection(false, true)
-                // Setter constraint -> any provided values must be enforced on domains
-                .addConstraint(List.of(), fullVar, (p, v) -> true, (params, var, idx, decision, domains) -> {
-                    // Propagate only once
-                    if (domains.get(var)[idx].cardinality() == 1) return false;
-                    // Skip unfruitful decision chains
-                    if (grid[Integer.parseInt(var.substring(7))][idx] != -1 &&
-                            grid[Integer.parseInt(var.substring(7))][idx] != (decision + 1)) return true;
-                    for (int n = 0; n < grid.length; n++) {
-                        BitSet[] v = domains.get("puzzle_" + n);
-                        for (int i = 0; i < v.length; i++)
-                            if (grid[n][i] != -1) {
-                                v[i].clear();
-                                v[i].set(grid[n][i] - 1);
-                            }
-                    }
-                    return false;
-                });
+                .setVariableSelection(false, true);
 
         // Apply the row-based constraints for each row separately
         for (int i = 0; i < grid.length; i++) {
+            final int ii = i;
             solver.addVariable("puzzle_" + i, new VariableBind(
                             List.of("N"), j -> IntStream.rangeClosed(1, (Integer) j.get(0))
                             .boxed().collect(Collectors.toList()),
-                            List.of("N"), j -> new Integer[(Integer) j.get(0)]))
+                            List.of("N"), j -> {
+                        Integer[] v = new Integer[(Integer) j.get(0)];
+                        for (int id = 0; id < (Integer) j.get(0); id++) {
+                            if (grid[ii][id] == -1) v[id] = Integer.MIN_VALUE;
+                            else v[id] = grid[ii][id];
+                        }
+                        return v;
+                    }))
                     // Sudoku rule #1: All numbers in a row are different
                     .addConstraint("puzzle_" + i, "alldiff", -1);
         }

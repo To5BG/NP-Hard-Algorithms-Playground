@@ -13,6 +13,7 @@ import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import java.util.Random;
 
 public class Solver<E> {
     Map<String, Bind> parameterBinds = new HashMap<>(); // Binds a parameter name ({ value bind })
@@ -21,7 +22,7 @@ public class Solver<E> {
     Map<String, Variable> variables = new HashMap<>(); // Binds a variable name to wrapper class
     List<String> variableNames = new ArrayList<>(); // Store variable names separate for optimization
     List<Constraint> constraints = new ArrayList<>(); // List of constraints to apply
-    Integer total, best; // Total number of variables and min/max score for MIN/MAX problems
+    Integer best; // Min/max score for MIN/MAX problems
     Problem solType; // Type of problem to solve
     CSolution<E> sol; // Solution object - cache in case of repetitive solver queries
     Function<Map<String, Integer[]>, E> transform; // Transform solved variables in desired form
@@ -74,8 +75,8 @@ public class Solver<E> {
     }
 
     // Loads model by binding input values to parameters and variables
-    private void loadModel(Map<String, Object> model) {
-        this.total = 0;
+    private int loadModel(Map<String, Object> model) {
+        int total = 0;
         // If bind is null, simply set value, else evaluate value with a function
         for (Map.Entry<String, Bind> e : parameterBinds.entrySet()) {
             if (e.getValue() == null) parameters.put(e.getKey(), model.get(e.getKey()));
@@ -96,13 +97,12 @@ public class Solver<E> {
             // Either an array, or a single value (also represented as array for simplicity)
             if (val instanceof Integer[]) v = (Integer[]) val;
             else v = new Integer[]{(Integer) val};
-            this.total += v.length;
-            // MIN_VALUE <=> no decision yet
-            Arrays.fill(v, Integer.MIN_VALUE);
+            total += v.length;
             variables.put(e.getKey(), new Variable(dom, v));
             variableNames.add(e.getKey());
         }
         Collections.sort(variableNames);
+        return total;
     }
 
     // Propagate all constraints that have a propagator
@@ -135,26 +135,36 @@ public class Solver<E> {
         // If already computed, return old solution
         if (this.sol != null && this.solType == sol) return this.sol;
         // Find parameters/precompute variables by loading model
-        loadModel(model);
+        int total = loadModel(model);
         this.solType = sol;
         this.sol = new CSolution<>();
         this.transform = transform;
         this.eval = eval;
         this.best = (this.solType == Problem.MAX) ? Integer.MIN_VALUE : Integer.MAX_VALUE;
-        // Create decisions
-        if (randomize) {
-            List<Integer> decisions = IntStream.range(0, total).boxed().collect(Collectors.toList());
-            Collections.shuffle(decisions);
-            this.decisions = decisions.toArray(Integer[]::new);
-        } else this.decisions = IntStream.range(0, total).boxed().toArray(Integer[]::new);
+        // Map variable names to initial values
+        Map<String, Integer[]> vals = this.variables.entrySet().stream()
+                .collect(Collectors.toMap(Map.Entry::getKey, i -> i.getValue().val));
         this.indexVariables();
-        // Track solve time
-        long time = System.currentTimeMillis();
-        // Start solution
-        solve(// Map variable names to initial values
-                this.variables.entrySet().stream().collect(Collectors.toMap(Map.Entry::getKey, i -> i.getValue().val)),
-                // Map variable names to possible domains, for every single list element
-                this.variables.entrySet().stream().collect(Collectors.toMap(Map.Entry::getKey, e -> {
+        // Create decisions and preset arrays
+        List<Pair> preset = new ArrayList<>();
+        this.decisions = IntStream.range(0, total).filter(i -> {
+            Pair ind = index[i];
+            if (vals.get(ind.var)[ind.eid] == Integer.MIN_VALUE) return true;
+            preset.add(ind);
+            return false;
+        }).boxed().toArray(Integer[]::new);
+        // Randomize if enabled - copied java.util.Collections.shuffle() and repurposed for array
+        if (randomize) {
+            Random rand = new Random();
+            for (int i = decisions.length; i > 1; i--) {
+                int temp = decisions[i - 1], j = rand.nextInt(i);
+                decisions[i - 1] = decisions[j];
+                decisions[j] = temp;
+            }
+        }
+        // Map variable names to possible domains, for every single list element
+        Map<String, BitSet[]> domains = this.variables.entrySet().stream().collect(Collectors.toMap(Map.Entry::getKey,
+                e -> {
                     Variable var = e.getValue();
                     // Current variable domain represented as bitmask over full domain (stored in variable map)
                     return IntStream.range(0, var.val.length).mapToObj(i -> {
@@ -162,7 +172,14 @@ public class Solver<E> {
                         b.flip(0, b.size());
                         return b;
                     }).toArray(BitSet[]::new);
-                })), 0, (this.sym == null) ? 1 : this.sym.initialWeight);
+                }));
+        // If some values pre-set, already attempt propagation over them
+        preset.forEach(p -> propagate(p.var, p.eid, variables.get(p.var).domain.indexOf(vals.get(p.var)[p.eid]),
+                domains));
+        // Track solve time
+        long time = System.currentTimeMillis();
+        // Start solution
+        solve(vals, domains, 0, (this.sym == null) ? 1 : this.sym.initialWeight);
         System.out.println("Solved in: " + (System.currentTimeMillis() - time) + "ms");
         return this.sol;
     }
@@ -170,7 +187,7 @@ public class Solver<E> {
     // Private solve - recursive part of search
     private void solve(Map<String, Integer[]> values, Map<String, BitSet[]> domains, int level, int weight) {
         // If all variables have been picked, check for satisfiability
-        if (level == total) {
+        if (level == this.decisions.length) {
             if (!testSatisfy(values)) return;
             // If count -> skip transforming/adding entry
             if (this.solType != Problem.COUNT) {
@@ -217,10 +234,11 @@ public class Solver<E> {
                 // If one of the domains becomes empty, then impossible to solve -> skip branch
                 if (propagate(nextVar, elIndex, i, newDomain)) continue;
                 // Variable selection -> most-constrained-variable heuristic
-                if (constrH) Arrays.sort(this.decisions, level + 1, total, Comparator.comparing(n -> {
-                    Pair curr = index[n];
-                    return newDomain.get(curr.var)[curr.eid].cardinality();
-                }));
+                if (constrH) Arrays.sort(this.decisions, level + 1, this.decisions.length,
+                        Comparator.comparing(n -> {
+                            Pair curr = index[n];
+                            return newDomain.get(curr.var)[curr.eid].cardinality();
+                        }));
                 // Continue with next decisions
                 solve(values, newDomain, level + 1, (sym == null) ? weight :
                         sym.calculateCountWeight.apply(this.parameters, nextVar, elIndex, i, weight));
