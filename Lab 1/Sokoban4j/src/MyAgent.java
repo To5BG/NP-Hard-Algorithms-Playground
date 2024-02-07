@@ -33,7 +33,7 @@ public class MyAgent extends ArtificialAgent {
 
     protected static BoardSlim board;
     protected int searchedNodes;
-    protected static int higherDim;
+    protected static int dim;
     private List<Point> goals;
     private DeadSquareDetector dsd;
     private static Long[][][] zobrist_hashes;
@@ -43,7 +43,7 @@ public class MyAgent extends ArtificialAgent {
     protected List<EDirection> think(BoardCompact board) {
         MyAgent.board = board.makeBoardSlim();
         searchedNodes = 0;
-        higherDim = Math.max(board.width(), board.height());
+        dim = Math.max(board.width(), board.height());
         goals = findGoals(MyAgent.board);
         dsd = new DeadSquareDetector(MyAgent.board);
         // Initialize Zobrist hashtable, 0 -> boxes, 1 -> player
@@ -80,13 +80,10 @@ public class MyAgent extends ArtificialAgent {
         dsd.skipped = new int[]{0, 0, 0};
         dsd.corralRisk = corralRisk;
         boolean completed = false;
-//        System.out.println("d: " + board.width() + " " + board.height());
         long completedHash = goals.stream().map(g -> zobrist_hashes[0][g.x][g.y]).reduce(0L, (a, e) -> a ^ e);
         Point[] boxPoints = findBoxes(board);
-//        for (Point bp : boxPoints) System.out.println(bp.x + " " + bp.y);
-        BitSet boxes = new BitSet(100);
-        for (Point b : boxPoints) boxes.set(b.x * higherDim + b.y);
-//        System.out.println(boxes);
+        BitSet boxes = new BitSet(board.width() * board.height());
+        for (Point b : boxPoints) boxes.set(b.x * dim + b.y);
         Node start = new Node(boxes, null, null, 0, manhattanH(boxes), board.playerX, board.playerY);
         // Heuristic is consistent - first reach is optimal (set sufficient)
         Set<Long> vis = new HashSet<>();
@@ -108,10 +105,10 @@ public class MyAgent extends ArtificialAgent {
             for (SMove move : SMove.getActions()) {
                 EDirection dir = move.getDirection();
                 int nextX = curr.playerX + dir.dX, nextY = curr.playerY + dir.dY;
-                if ((board.tiles[nextX][nextY] & STile.WALL_FLAG) == 0 &&
-                        !curr.boxes.get(nextX * higherDim + nextY) &&
-                        (!(curr.pa instanceof SMove) ||
-                                !move.getDirection().equals(curr.pa.getDirection().opposite())))
+                // Next square is free (no wall or box)
+                if ((board.tiles[nextX][nextY] & STile.WALL_FLAG) == 0 && !curr.boxes.get(nextX * dim + nextY) &&
+                        // Player does not backtrack
+                        (!(curr.pa instanceof SMove) || !move.getDirection().equals(curr.pa.getDirection().opposite())))
                     actions.add(move);
             }
             // Add possible pushes
@@ -119,39 +116,34 @@ public class MyAgent extends ArtificialAgent {
                 EDirection dir = push.getDirection();
                 int nextX = curr.playerX + dir.dX, nextY = curr.playerY + dir.dY;
                 int nextXX = nextX + dir.dX, nextYY = nextY + dir.dY;
-                if (curr.boxes.get(nextX * higherDim + nextY) &&
-                        (board.tiles[nextXX][nextYY] & STile.WALL_FLAG) == 0 &&
-                        !curr.boxes.get(nextXX * higherDim + nextYY))
+                // Next square has box, and next-next square is free (no wall or box)
+                if (curr.boxes.get(nextX * dim + nextY) && (board.tiles[nextXX][nextYY] & STile.WALL_FLAG) == 0 &&
+                        !curr.boxes.get(nextXX * dim + nextYY))
                     actions.add(push);
             }
             // For each possible action
             for (SAction action : actions) {
-                Node next = curr.copy();
+                Node next = curr.copy(action);
                 EDirection dir = action.getDirection();
                 int nextX = next.playerX + dir.dX, nextY = next.playerY + dir.dY;
                 // Slight code repetition because pushes have a lot of extra logic
-                float h;
-                int newCost = curr.g + 1;
                 if (action instanceof SPush) {
                     int nextXX = nextX + dir.dX, nextYY = nextY + dir.dY;
                     next.moveBox(nextX, nextY, nextXX, nextYY);
                     next.movePlayer(nextX, nextY);
+                    // Heuristic is consistent - first reach is optimal <-> check if already expanded
                     if (vis.contains(next.hashFull) || dsd.detectSimple(nextXX, nextYY)
                             || dsd.detectFreeze(next.boxes, nextXX, nextYY, next.hashBox))
 //                            || dsd.detectCorral(next.boxes, nextXX, nextYY, dir.dX, dir.dY, next.playerX,
 //                        next.playerY, next.hashFull))
                         continue;
-                    h = manhattanH(next.boxes);
+                    next.h = manhattanH(next.boxes);
                 } else {
+                    // SMove -> boxes unchanged -> redundant deadlock detection and heuristic recalculation
                     next.movePlayer(nextX, nextY);
                     if (vis.contains(next.hashFull)) continue;
-                    h = curr.h;
                 }
                 vis.add(next.hashFull);
-                next.parent = curr;
-                next.pa = action;
-                next.g = newCost;
-                next.h = h;
                 q.add(next);
             }
         }
@@ -171,11 +163,9 @@ public class MyAgent extends ArtificialAgent {
     // Heuristic function - manhattan closest matching
     private float manhattanH(BitSet boxes) {
         return boxes.stream().map(b -> {
-            int bX = b / higherDim, bY = b % higherDim;
-            int d = goals.stream().map(g -> Math.abs(g.x - bX) + Math.abs(g.y - bY))
+            int bX = b / dim, bY = b % dim;
+            return goals.stream().map(g -> Math.abs(g.x - bX) + Math.abs(g.y - bY))
                     .reduce(Math::min).orElse(0);
-//            System.out.println(bX + " " + bY + " " + d);
-            return d;
         }).reduce(Integer::sum).orElse(0);
     }
 
@@ -190,7 +180,7 @@ public class MyAgent extends ArtificialAgent {
 
         public Node(BitSet boxes, Node parent, SAction pa, int g, float h, int playerX, int playerY) {
             this(boxes, parent, pa, g, h, playerX, playerY, 0L, 0L);
-            boxes.stream().forEach(e -> this.hashBox ^= zobrist_hashes[0][e / higherDim][e % higherDim]);
+            boxes.stream().forEach(e -> this.hashBox ^= zobrist_hashes[0][e / dim][e % dim]);
             this.hashFull = this.hashBox;
             this.hashFull ^= zobrist_hashes[1][playerX][playerY];
         }
@@ -208,8 +198,8 @@ public class MyAgent extends ArtificialAgent {
             this.hashFull = hashFull;
         }
 
-        public Node copy() {
-            return new Node((BitSet) boxes.clone(), parent, pa, g, h, playerX, playerY, hashBox, hashFull);
+        public Node copy(SAction pa) {
+            return new Node((BitSet) boxes.clone(), this, pa, g + 1, h, playerX, playerY, hashBox, hashFull);
         }
 
         public void movePlayer(int tx, int ty) {
@@ -220,8 +210,8 @@ public class MyAgent extends ArtificialAgent {
         }
 
         public void moveBox(int x, int y, int tx, int ty) {
-            boxes.clear(x * higherDim + y);
-            boxes.set(tx * higherDim + ty);
+            boxes.clear(x * dim + y);
+            boxes.set(tx * dim + ty);
             hashBox ^= zobrist_hashes[0][x][y];
             hashBox ^= zobrist_hashes[0][tx][ty];
         }
@@ -312,9 +302,9 @@ public class MyAgent extends ArtificialAgent {
                     int dy = y + dirs[i], dx = x + dirs[i + 1];
                     int ddy = y + dirs[i + 2], ddx = x + dirs[(i + 3) % 4];
                     // If box -> recursively check if next box is frozen
-                    if (boxes.get(dx * higherDim + dy) && !bs.contains(dx * 100 + dy))
+                    if (boxes.get(dx * dim + dy) && !bs.contains(dx * 100 + dy))
                         frozen[1 - i] = detectFreeze(boxes, dx, dy, f, bs);
-                    if (boxes.get(ddx * higherDim + ddy) && !bs.contains(ddx * 100 + ddy))
+                    if (boxes.get(ddx * dim + ddy) && !bs.contains(ddx * 100 + ddy))
                         frozen[1 - i] = detectFreeze(boxes, ddx, ddy, f, bs);
                 }
             // If frozen from both axes
@@ -356,7 +346,7 @@ public class MyAgent extends ArtificialAgent {
             // Check that it is not a wall
             if ((board.tiles[x][y] & STile.WALL_FLAG) != 0) return;
             // Check for box
-            if (boxes.get(x * higherDim + y)) {
+            if (boxes.get(x * dim + y)) {
                 corralBoxes++;
                 return;
             }
