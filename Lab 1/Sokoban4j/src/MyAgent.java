@@ -30,14 +30,18 @@ import game.board.slim.STile;
  * @author Alperen Guncan
  */
 public class MyAgent extends ArtificialAgent {
-
+    // Board that is currently being solved
     protected static BoardSlim board;
+    // Counter of searched nodes
     protected int searchedNodes;
+    // Higher dimension of board -> used for boxes pos bitmask (to avoid collisions)
     protected static int dim;
+    // Goal pos
     private List<Point> goals;
+    // Composition with DeadSquareDetector
     private DeadSquareDetector dsd;
+    // Zobrist hashes -> Random Long for each position used for state hashing
     private static Long[][][] zobrist_hashes;
-    static int[] dirs = new int[]{-1, 0, 1, 0};
 
     @Override
     protected List<EDirection> think(BoardCompact board) {
@@ -61,6 +65,8 @@ public class MyAgent extends ArtificialAgent {
             // Clear cache from old corrals
             dsd.corralCache = dsd.corralCache.entrySet().stream().filter(e -> !e.getValue())
                     .collect(Collectors.toMap(Map.Entry::getKey, stringBooleanEntry -> false));
+            dsd.skipped = new int[]{0, 0, 0};
+            dsd.corralRisk = corralRisk;
             List<EDirection> result = a_star(maxCost, corralRisk); // depth of search tree
             corralRisk += corralStep;
             if (result == null) continue;
@@ -77,15 +83,13 @@ public class MyAgent extends ArtificialAgent {
 
     private List<EDirection> a_star(int maxCost, int corralRisk) {
         // Initialize
-        dsd.skipped = new int[]{0, 0, 0};
-        dsd.corralRisk = corralRisk;
         boolean completed = false;
         long completedHash = goals.stream().map(g -> zobrist_hashes[0][g.x][g.y]).reduce(0L, (a, e) -> a ^ e);
         Point[] boxPoints = findBoxes(board);
         BitSet boxes = new BitSet(board.width() * board.height());
         for (Point b : boxPoints) boxes.set(b.x * dim + b.y);
         Node start = new Node(boxes, null, null, 0, manhattanH(boxes), board.playerX, board.playerY);
-        // Heuristic is consistent - first reach is optimal (set sufficient)
+        // Heuristic is consistent + uniform costs -> first reach is optimal (set sufficient)
         Set<Long> vis = new HashSet<>();
         vis.add(start.hashFull);
         Queue<Node> q = new PriorityQueue<>();
@@ -131,7 +135,6 @@ public class MyAgent extends ArtificialAgent {
                     int nextXX = nextX + dir.dX, nextYY = nextY + dir.dY;
                     next.moveBox(nextX, nextY, nextXX, nextYY);
                     next.movePlayer(nextX, nextY);
-                    // Heuristic is consistent - first reach is optimal <-> check if already expanded
                     if (vis.contains(next.hashFull) || dsd.detectSimple(nextXX, nextYY)
                             || dsd.detectFreeze(next.boxes, nextXX, nextYY, next.hashBox))
 //                            || dsd.detectCorral(next.boxes, nextXX, nextYY, dir.dX, dir.dY, next.playerX,
@@ -233,10 +236,14 @@ public class MyAgent extends ArtificialAgent {
 
     // Class for finding dead squares
     static class DeadSquareDetector {
+        // Static dead square positions
         boolean[][] dead;
-        int[] skipped = new int[]{0, 0, 0};
+        // Skipped states counter for different deadlock types, and directions helper (used for flooding)
+        int[] skipped = new int[]{0, 0, 0}, dirs = new int[]{-1, 0, 1, 0};
+        // 'Global' variables/counters visible to all recursive stacks for corral deadlock detection
         boolean corral = true;
         int corralRisk = 0, corralBoxes = 0, corralGoals = 0;
+        // Caches for freeze and corral deadlocks
         Map<Long, Boolean> freezeCache = new HashMap<>(), corralCache = new HashMap<>();
 
         public DeadSquareDetector(BoardSlim board) {
