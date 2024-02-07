@@ -84,7 +84,7 @@ public class SokobanMain {
 //         String levelset = null;
 //        String levelset = "Lab 1/Sokoban4j/levels/easy.sok";
         String levelset = "Lab 1/Sokoban4j/levels/Aymeric_Hard.sok";
-        int level = 20;
+        int level = 0;
         int maxFail = 0;
         boolean optimal = false;
         String resultDir = null;

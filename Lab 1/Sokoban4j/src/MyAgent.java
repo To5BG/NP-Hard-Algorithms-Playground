@@ -2,6 +2,7 @@ import static java.lang.System.out;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.BitSet;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
@@ -32,6 +33,7 @@ public class MyAgent extends ArtificialAgent {
 
     protected static BoardSlim board;
     protected int searchedNodes;
+    protected static int higherDim;
     private List<Point> goals;
     private DeadSquareDetector dsd;
     private static Long[][][] zobrist_hashes;
@@ -41,6 +43,7 @@ public class MyAgent extends ArtificialAgent {
     protected List<EDirection> think(BoardCompact board) {
         MyAgent.board = board.makeBoardSlim();
         searchedNodes = 0;
+        higherDim = Math.max(board.width(), board.height());
         goals = findGoals(MyAgent.board);
         dsd = new DeadSquareDetector(MyAgent.board);
         // Initialize Zobrist hashtable, 0 -> boxes, 1 -> player
@@ -52,7 +55,7 @@ public class MyAgent extends ArtificialAgent {
                 zobrist_hashes[1][i][j] = rand.nextLong();
             }
         // Start from 1 (or higher) for less risky solver
-        int corralRisk = 0, corralStep = 1, maxCost = 500;
+        int corralRisk = 0, corralStep = 10, maxCost = 500;
         long searchStartMillis = System.currentTimeMillis();
         while (corralRisk <= MyAgent.board.boxCount) {
             // Clear cache from old corrals
@@ -74,20 +77,21 @@ public class MyAgent extends ArtificialAgent {
 
     private List<EDirection> a_star(int maxCost, int corralRisk) {
         // Initialize
-        // Heuristic is consistent - first reach is optimal (set sufficient)
-        Set<Long> vis = new HashSet<>();
-        Queue<Node> q = new PriorityQueue<>();
-        BoxPoint[] boxes = findBoxes(board);
         dsd.skipped = new int[]{0, 0, 0};
         dsd.corralRisk = corralRisk;
         boolean completed = false;
+//        System.out.println("d: " + board.width() + " " + board.height());
         long completedHash = goals.stream().map(g -> zobrist_hashes[0][g.x][g.y]).reduce(0L, (a, e) -> a ^ e);
-        float startH = Arrays.stream(boxes).map(b -> {
-            b.dist = goals.stream().map(g -> Math.abs(g.x - b.x) + Math.abs(g.y - b.y)).reduce(Math::min).orElse(0);
-            return b.dist;
-        }).reduce(Float::sum).orElse(0.0f);
-        Node start = new Node(boxes, null, null, 0, startH, board.playerX, board.playerY);
+        Point[] boxPoints = findBoxes(board);
+//        for (Point bp : boxPoints) System.out.println(bp.x + " " + bp.y);
+        BitSet boxes = new BitSet(100);
+        for (Point b : boxPoints) boxes.set(b.x * higherDim + b.y);
+//        System.out.println(boxes);
+        Node start = new Node(boxes, null, null, 0, manhattanH(boxes), board.playerX, board.playerY);
+        // Heuristic is consistent - first reach is optimal (set sufficient)
+        Set<Long> vis = new HashSet<>();
         vis.add(start.hashFull);
+        Queue<Node> q = new PriorityQueue<>();
         q.add(start);
         // A*
         Node curr = null;
@@ -105,8 +109,9 @@ public class MyAgent extends ArtificialAgent {
                 EDirection dir = move.getDirection();
                 int nextX = curr.playerX + dir.dX, nextY = curr.playerY + dir.dY;
                 if ((board.tiles[nextX][nextY] & STile.WALL_FLAG) == 0 &&
-                        Arrays.stream(curr.boxes).noneMatch(b -> b.x == nextX && b.y == nextY) &&
-                        (!(curr.pa instanceof SMove) || !move.getDirection().equals(curr.pa.getDirection().opposite())))
+                        !curr.boxes.get(nextX * higherDim + nextY) &&
+                        (!(curr.pa instanceof SMove) ||
+                                !move.getDirection().equals(curr.pa.getDirection().opposite())))
                     actions.add(move);
             }
             // Add possible pushes
@@ -114,34 +119,39 @@ public class MyAgent extends ArtificialAgent {
                 EDirection dir = push.getDirection();
                 int nextX = curr.playerX + dir.dX, nextY = curr.playerY + dir.dY;
                 int nextXX = nextX + dir.dX, nextYY = nextY + dir.dY;
-                if (Arrays.stream(curr.boxes).anyMatch(b -> b.x == nextX && b.y == nextY) &&
+                if (curr.boxes.get(nextX * higherDim + nextY) &&
                         (board.tiles[nextXX][nextYY] & STile.WALL_FLAG) == 0 &&
-                        Arrays.stream(curr.boxes).noneMatch(b -> b.x == nextXX && b.y == nextYY))
+                        !curr.boxes.get(nextXX * higherDim + nextYY))
                     actions.add(push);
             }
             // For each possible action
             for (SAction action : actions) {
                 Node next = curr.copy();
                 EDirection dir = action.getDirection();
-                int nextX = curr.playerX + dir.dX, nextY = curr.playerY + dir.dY;
-                BoxPoint mBox = null;
-                // Move player and, if push action, the box
-                boolean isPush = action instanceof SPush;
-                if (isPush) mBox = next.moveBox(nextX, nextY, nextX + dir.dX, nextY + dir.dY);
-                next.movePlayer(nextX, nextY);
+                int nextX = next.playerX + dir.dX, nextY = next.playerY + dir.dY;
+                // Slight code repetition because pushes have a lot of extra logic
+                float h;
                 int newCost = curr.g + 1;
-                // Don't consider if it does not improve on previous distance or if it leads to an unsolvable position
-                if (vis.contains(next.hashFull) || (isPush && (dsd.detectSimple(mBox.x, mBox.y)
-                        || dsd.detectFreeze(next.boxes, mBox.x, mBox.y, next.hashBox))))
-//                        || dsd.detectCorral(next.boxes, mBox.x, mBox.y, dir.dX, dir.dY, next.playerX,
-//                        next.playerY, next.hashFull))))
-                    continue;
+                if (action instanceof SPush) {
+                    int nextXX = nextX + dir.dX, nextYY = nextY + dir.dY;
+                    next.moveBox(nextX, nextY, nextXX, nextYY);
+                    next.movePlayer(nextX, nextY);
+                    if (vis.contains(next.hashFull) || dsd.detectSimple(nextXX, nextYY)
+                            || dsd.detectFreeze(next.boxes, nextXX, nextYY, next.hashBox))
+//                            || dsd.detectCorral(next.boxes, nextXX, nextYY, dir.dX, dir.dY, next.playerX,
+//                        next.playerY, next.hashFull))
+                        continue;
+                    h = manhattanH(next.boxes);
+                } else {
+                    next.movePlayer(nextX, nextY);
+                    if (vis.contains(next.hashFull)) continue;
+                    h = curr.h;
+                }
                 vis.add(next.hashFull);
-                // Update next state
                 next.parent = curr;
                 next.pa = action;
                 next.g = newCost;
-                next.h = singleH(goals, mBox, curr.h);
+                next.h = h;
                 q.add(next);
             }
         }
@@ -158,37 +168,34 @@ public class MyAgent extends ArtificialAgent {
         return actions;
     }
 
-    // Heuristic function - single match
-    private float singleH(List<Point> goals, BoxPoint changed, float oldH) {
-        // If boxes did not change, do not update
-        if (changed == null) return oldH;
-        // Manhattan closest matching
-        float newDist = goals.stream().map(g -> Math.abs(changed.x - g.x) + Math.abs(changed.y - g.y))
-                .reduce(Integer.MAX_VALUE, Integer::min);
-        float res = oldH - changed.dist;
-        changed.dist = newDist;
-        return res + changed.dist;
+    // Heuristic function - manhattan closest matching
+    private float manhattanH(BitSet boxes) {
+        return boxes.stream().map(b -> {
+            int bX = b / higherDim, bY = b % higherDim;
+            int d = goals.stream().map(g -> Math.abs(g.x - bX) + Math.abs(g.y - bY))
+                    .reduce(Math::min).orElse(0);
+//            System.out.println(bX + " " + bY + " " + d);
+            return d;
+        }).reduce(Integer::sum).orElse(0);
     }
 
     // State
     static class Node implements Comparable<Node> {
-        BoxPoint[] boxes;
+        BitSet boxes;
         Node parent;
         SAction pa;
-        int playerX, playerY;
-        int g;
+        int playerX, playerY, g;
         long hashBox, hashFull;
         float h;
 
-        public Node(BoxPoint[] boxes, Node parent, SAction pa, int g, float h, int playerX, int playerY) {
+        public Node(BitSet boxes, Node parent, SAction pa, int g, float h, int playerX, int playerY) {
             this(boxes, parent, pa, g, h, playerX, playerY, 0L, 0L);
-            for (BoxPoint b : boxes)
-                this.hashBox ^= zobrist_hashes[0][b.x][b.y];
+            boxes.stream().forEach(e -> this.hashBox ^= zobrist_hashes[0][e / higherDim][e % higherDim]);
             this.hashFull = this.hashBox;
-            this.hashFull ^= zobrist_hashes[1][playerX / 100][playerY % 100];
+            this.hashFull ^= zobrist_hashes[1][playerX][playerY];
         }
 
-        public Node(BoxPoint[] boxes, Node parent, SAction pa, int g, float h, int playerX, int playerY, Long hashBox,
+        public Node(BitSet boxes, Node parent, SAction pa, int g, float h, int playerX, int playerY, Long hashBox,
                     Long hashFull) {
             this.boxes = boxes;
             this.parent = parent;
@@ -202,12 +209,7 @@ public class MyAgent extends ArtificialAgent {
         }
 
         public Node copy() {
-            BoxPoint[] newBoxes = new BoxPoint[boxes.length];
-            for (int i = 0; i < boxes.length; i++) {
-                BoxPoint box = boxes[i];
-                newBoxes[i] = new BoxPoint(box.x, box.y, box.dist);
-            }
-            return new Node(newBoxes, parent, pa, g, h, playerX, playerY, hashBox, hashFull);
+            return new Node((BitSet) boxes.clone(), parent, pa, g, h, playerX, playerY, hashBox, hashFull);
         }
 
         public void movePlayer(int tx, int ty) {
@@ -217,18 +219,11 @@ public class MyAgent extends ArtificialAgent {
             hashFull ^= zobrist_hashes[1][tx][ty];
         }
 
-        public BoxPoint moveBox(int x, int y, int tx, int ty) {
-            BoxPoint box = null;
-            for (BoxPoint b : boxes)
-                if (b.x == x && b.y == y) {
-                    box = b;
-                    box.x = tx;
-                    box.y = ty;
-                    break;
-                }
+        public void moveBox(int x, int y, int tx, int ty) {
+            boxes.clear(x * higherDim + y);
+            boxes.set(tx * higherDim + ty);
             hashBox ^= zobrist_hashes[0][x][y];
             hashBox ^= zobrist_hashes[0][tx][ty];
-            return box;
         }
 
         public int compareTo(Node o) {
@@ -236,18 +231,8 @@ public class MyAgent extends ArtificialAgent {
         }
     }
 
-    // Box point extension with an extra variables (dist to closest goal)
-    public static class BoxPoint extends Point {
-        float dist;
-
-        public BoxPoint(int x, int y, float dist) {
-            super(x, y);
-            this.dist = dist;
-        }
-    }
-
     // Point DAO
-    static class Point {
+    static public class Point {
         int x, y;
 
         public Point(int x, int y) {
@@ -298,7 +283,7 @@ public class MyAgent extends ArtificialAgent {
         }
 
         // Detect freeze deadlocks (dynamic) - tiles from which a box cannot move, depends on other boxes
-        public boolean detectFreeze(BoxPoint[] boxes, int x, int y, Long hash) {
+        public boolean detectFreeze(BitSet boxes, int x, int y, Long hash) {
             // Return cached config if possible
             if (freezeCache.containsKey(hash)) return freezeCache.get(hash);
             Set<Point> frozen = new HashSet<>();
@@ -311,7 +296,7 @@ public class MyAgent extends ArtificialAgent {
             return res;
         }
 
-        private boolean detectFreeze(BoxPoint[] boxes, int x, int y, Set<Point> f, Set<Integer> bs) {
+        private boolean detectFreeze(BitSet boxes, int x, int y, Set<Point> f, Set<Integer> bs) {
             // Check if frozen in x- and y-axis
             boolean[] frozen = new boolean[2];
             for (int i = 0; i < 2; i++) {
@@ -327,9 +312,9 @@ public class MyAgent extends ArtificialAgent {
                     int dy = y + dirs[i], dx = x + dirs[i + 1];
                     int ddy = y + dirs[i + 2], ddx = x + dirs[(i + 3) % 4];
                     // If box -> recursively check if next box is frozen
-                    if (Arrays.stream(boxes).anyMatch(b -> b.x == dx && b.y == dy) && !bs.contains(dx * 100 + dy))
+                    if (boxes.get(dx * higherDim + dy) && !bs.contains(dx * 100 + dy))
                         frozen[1 - i] = detectFreeze(boxes, dx, dy, f, bs);
-                    if (Arrays.stream(boxes).anyMatch(b -> b.x == ddx && b.y == ddy) && !bs.contains(ddx * 100 + ddy))
+                    if (boxes.get(ddx * higherDim + ddy) && !bs.contains(ddx * 100 + ddy))
                         frozen[1 - i] = detectFreeze(boxes, ddx, ddy, f, bs);
                 }
             // If frozen from both axes
@@ -341,7 +326,7 @@ public class MyAgent extends ArtificialAgent {
         }
 
         // Detect corral deadlocks - when pushed box forms a closed unreachable area with not enough goals
-        public boolean detectCorral(BoxPoint[] boxes, int x, int y, int dx, int dy, int pX, int pY, Long hash) {
+        public boolean detectCorral(BitSet boxes, int x, int y, int dx, int dy, int pX, int pY, Long hash) {
             if (corralRisk == board.boxCount) return false;
             // Return cached config if possible
             if (corralCache.containsKey(hash)) return corralCache.get(hash);
@@ -359,7 +344,7 @@ public class MyAgent extends ArtificialAgent {
             return res;
         }
 
-        private void floodFill(BoxPoint[] boxes, int x, int y, int playerX, int playerY, boolean[][] seen) {
+        private void floodFill(BitSet boxes, int x, int y, int playerX, int playerY, boolean[][] seen) {
             seen[x][y] = true;
             // Check for player
             if (playerX == x && playerY == y) {
@@ -371,7 +356,7 @@ public class MyAgent extends ArtificialAgent {
             // Check that it is not a wall
             if ((board.tiles[x][y] & STile.WALL_FLAG) != 0) return;
             // Check for box
-            if (Arrays.stream(boxes).anyMatch(b -> b.x == x && b.y == y)) {
+            if (boxes.get(x * higherDim + y)) {
                 corralBoxes++;
                 return;
             }
@@ -396,11 +381,11 @@ public class MyAgent extends ArtificialAgent {
     }
 
     // Helper for finding all boxes in a board
-    public static BoxPoint[] findBoxes(BoardSlim board) {
-        List<BoxPoint> res = new ArrayList<>();
+    public static Point[] findBoxes(BoardSlim board) {
+        List<Point> res = new ArrayList<>();
         for (int i = 1; i < board.width() - 1; i++)
             for (int j = 1; j < board.height() - 1; j++)
-                if ((STile.BOX_FLAG & board.tiles[i][j]) != 0) res.add(new BoxPoint(i, j, -1));
-        return res.toArray(BoxPoint[]::new);
+                if ((STile.BOX_FLAG & board.tiles[i][j]) != 0) res.add(new Point(i, j));
+        return res.toArray(Point[]::new);
     }
 }
