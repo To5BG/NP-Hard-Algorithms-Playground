@@ -59,7 +59,7 @@ public class MyAgent extends ArtificialAgent {
                 zobrist_hashes[1][i][j] = rand.nextLong();
             }
         // Start from 1 (or higher) for less risky solver
-        int corralRisk = 0, corralStep = 10, maxCost = 500;
+        int corralRisk = 0, corralStep = 1, maxCost = 500;
         long searchStartMillis = System.currentTimeMillis();
         while (corralRisk <= MyAgent.board.boxCount) {
             // Clear cache from old corrals
@@ -85,10 +85,11 @@ public class MyAgent extends ArtificialAgent {
         // Initialize
         boolean completed = false;
         long completedHash = goals.stream().map(g -> zobrist_hashes[0][g.x][g.y]).reduce(0L, (a, e) -> a ^ e);
-        Point[] boxPoints = findBoxes(board);
         BitSet boxes = new BitSet(board.width() * board.height());
-        for (Point b : boxPoints) boxes.set(b.x * dim + b.y);
-        Node start = new Node(boxes, null, null, 0, manhattanH(boxes), board.playerX, board.playerY);
+        for (Point b : findBoxes(board)) boxes.set(b.x * dim + b.y);
+        // Action placeholder, is ignored anyway
+        Node start = new Node(boxes, null, SPush.getAction(EDirection.RIGHT), 0, manhattanH(boxes),
+                board.playerX, board.playerY);
         // Heuristic is consistent + uniform costs -> first reach is optimal (set sufficient)
         Set<Long> vis = new HashSet<>();
         vis.add(start.hashFull);
@@ -106,13 +107,16 @@ public class MyAgent extends ArtificialAgent {
             if (curr.g > maxCost) continue;
             List<SAction> actions = new ArrayList<>(4);
             // Add possible moves
+            EDirection opposite = curr.pa.getDirection().opposite();
             for (SMove move : SMove.getActions()) {
                 EDirection dir = move.getDirection();
                 int nextX = curr.playerX + dir.dX, nextY = curr.playerY + dir.dY;
-                // Next square is free (no wall or box)
-                if ((board.tiles[nextX][nextY] & STile.WALL_FLAG) == 0 && !curr.boxes.get(nextX * dim + nextY) &&
+                // Next square is free (no wall)
+                if ((board.tiles[nextX][nextY] & STile.WALL_FLAG) == 0 &&
                         // Player does not backtrack
-                        (!(curr.pa instanceof SMove) || !move.getDirection().equals(curr.pa.getDirection().opposite())))
+                        !(curr.pa instanceof SMove && dir.equals(opposite))
+                        // Next square is free (no box) -> put here because second condition is more restricting
+                        && !curr.boxes.get(nextX * dim + nextY))
                     actions.add(move);
             }
             // Add possible pushes
@@ -153,7 +157,7 @@ public class MyAgent extends ArtificialAgent {
         // Backtracking to build action chain
         if (curr == null || !completed) return null;
         List<EDirection> actions = new LinkedList<>();
-        while (curr.pa != null) {
+        while (curr.parent != null) {
             actions.add(0, curr.pa.getDirection());
             curr = curr.parent;
         }
