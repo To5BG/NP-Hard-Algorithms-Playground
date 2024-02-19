@@ -47,6 +47,7 @@ public class MyAgent extends ArtificialAgent {
     protected List<EDirection> think(BoardCompact board) {
         MyAgent.board = board.makeBoardSlim();
         searchedNodes = 0;
+        // Find longer side for avoiding collisions on box bitmask
         dim = Math.max(board.width(), board.height());
         goals = findGoals(MyAgent.board);
         dsd = new DeadSquareDetector(MyAgent.board);
@@ -326,6 +327,7 @@ public class MyAgent extends ArtificialAgent {
             return false;
         }
 
+        @SuppressWarnings("unused")
         // Detect corral deadlocks - when pushed box forms a closed unreachable area with not enough goals
         public boolean detectCorral(BitSet boxes, int x, int y, int dx, int dy, int pX, int pY, Long hash) {
             if (corralRisk == board.boxCount) return false;
