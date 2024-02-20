@@ -288,40 +288,49 @@ public class MyAgent extends ArtificialAgent {
         public boolean detectFreeze(BitSet boxes, int x, int y, Long hash) {
             // Return cached config if possible
             if (freezeCache.containsKey(hash)) return freezeCache.get(hash);
-            Set<Point> frozen = new HashSet<>();
+            Set<Integer> frozen = new HashSet<>();
             // Get all frozen blocks in curr config
-            detectFreeze(boxes, x, y, frozen, new HashSet<>());
+            detectFreeze(boxes, x, y, frozen, new BitSet(board.width() * dim + board.height()));
             // If any frozen block is not on goal -> dead state
-            boolean res = frozen.stream().anyMatch(b -> (STile.PLACE_FLAG & board.tiles[b.x][b.y]) == 0);
+            boolean res = frozen.stream().anyMatch(b -> (STile.PLACE_FLAG & board.tiles[b / dim][b % dim]) == 0);
             if (res) this.skipped[1]++;
             freezeCache.put(hash, res);
             return res;
         }
 
-        private boolean detectFreeze(BitSet boxes, int x, int y, Set<Point> f, Set<Integer> bs) {
+        private boolean detectFreeze(BitSet boxes, int x, int y, Set<Integer> f, BitSet bs) {
             // Check if frozen in x- and y-axis
             boolean[] frozen = new boolean[2];
             for (int i = 0; i < 2; i++) {
                 int dx = x + dirs[i], dy = y + dirs[i + 1], ddx = x + dirs[i + 2], ddy = y + dirs[(i + 3) % 4];
                 // Check for an axis if there's 1 wall, or 2 dead states
                 frozen[i] = STile.isWall(board.tiles[dx][dy]) || STile.isWall(board.tiles[ddx][ddy]) ||
-                        bs.contains(100 * dx + dy) || bs.contains(100 * ddx + ddy) || (dead[dx][dy] && dead[ddx][ddy]);
+                        bs.get(dim * dx + dy) || bs.get(dim * ddx + ddy) || (dead[dx][dy] && dead[ddx][ddy]);
+            }
+            // If frozen from both axes - short-circuit guard
+            if (frozen[0] && frozen[1]) {
+                f.add(x * dim + y);
+                return true;
             }
             for (int i = 0; i < 2; i++)
                 if (frozen[i]) {
                     // Prevent circular check
-                    bs.add(x * 100 + y);
+                    bs.set(x * dim + y);
                     int dy = y + dirs[i], dx = x + dirs[i + 1];
-                    int ddy = y + dirs[i + 2], ddx = x + dirs[(i + 3) % 4];
                     // If box -> recursively check if next box is frozen
-                    if (boxes.get(dx * dim + dy) && !bs.contains(dx * 100 + dy))
+                    if (boxes.get(dx * dim + dy) && !bs.get(dx * dim + dy))
                         frozen[1 - i] = detectFreeze(boxes, dx, dy, f, bs);
-                    if (boxes.get(ddx * dim + ddy) && !bs.contains(ddx * 100 + ddy))
+                    // Short-circuit guard
+                    if (frozen[1 - i]) break;
+                    int ddy = y + dirs[i + 2], ddx = x + dirs[(i + 3) % 4];
+                    if (boxes.get(ddx * dim + ddy) && !bs.get(ddx * dim + ddy))
                         frozen[1 - i] = detectFreeze(boxes, ddx, ddy, f, bs);
+                    // Short-circuit guard
+                    if (frozen[1 - i]) break;
                 }
             // If frozen from both axes
             if (frozen[0] && frozen[1]) {
-                f.add(new Point(x, y));
+                f.add(x * dim + y);
                 return true;
             }
             return false;
