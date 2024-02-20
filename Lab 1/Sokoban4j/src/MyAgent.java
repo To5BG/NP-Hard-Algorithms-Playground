@@ -49,7 +49,7 @@ public class MyAgent extends ArtificialAgent {
         searchedNodes = 0;
         // Find longer side for avoiding collisions on box bitmask
         dim = Math.max(board.width(), board.height());
-        goals = findGoals(MyAgent.board);
+        goals = findEntities(MyAgent.board, STile.PLACE_FLAG);
         dsd = new DeadSquareDetector(MyAgent.board);
         // Initialize Zobrist hashtable, 0 -> boxes, 1 -> player
         zobrist_hashes = new Long[2][board.width()][board.height()];
@@ -87,7 +87,7 @@ public class MyAgent extends ArtificialAgent {
         boolean completed = false;
         long completedHash = goals.stream().map(g -> zobrist_hashes[0][g.x][g.y]).reduce(0L, (a, e) -> a ^ e);
         BitSet boxes = new BitSet(board.width() * board.height());
-        for (Point b : findBoxes(board)) boxes.set(b.x * dim + b.y);
+        for (Point box : findEntities(board, STile.BOX_FLAG)) boxes.set(box.x * dim + box.y);
         // Action placeholder, is ignored anyway
         Node start = new Node(boxes, null, SPush.getAction(EDirection.RIGHT), 0, manhattanH(boxes),
                 board.playerX, board.playerY);
@@ -259,7 +259,7 @@ public class MyAgent extends ArtificialAgent {
         public boolean[][] detectSimple(BoardSlim board) {
             boolean[][] res = new boolean[board.width()][board.height()];
             // Flood fill for dead squares, starting from each goal
-            for (Point goal : findGoals(board)) pull(board, res, goal.x, goal.y);
+            for (Point goal : findEntities(board, STile.PLACE_FLAG)) pull(board, res, goal.x, goal.y);
             // Invert result (not visited -> dead)
             for (int i = 0; i < board.width(); i++) for (int j = 0; j < board.height(); j++) res[i][j] ^= true;
             return res;
@@ -383,21 +383,12 @@ public class MyAgent extends ArtificialAgent {
         }
     }
 
-    // Helper for finding all goals in a board
-    private static List<Point> findGoals(BoardSlim board) {
+    // Helper for finding entities in a board (goals/boxes/walls/etc.)
+    private static List<Point> findEntities(BoardSlim board, byte flag) {
         List<Point> res = new ArrayList<>();
         for (int i = 1; i < board.width() - 1; i++)
             for (int j = 1; j < board.height() - 1; j++)
-                if ((STile.PLACE_FLAG & board.tiles[i][j]) != 0) res.add(new Point(i, j));
+                if ((flag & board.tiles[i][j]) != 0) res.add(new Point(i, j));
         return res;
-    }
-
-    // Helper for finding all boxes in a board
-    public static Point[] findBoxes(BoardSlim board) {
-        List<Point> res = new ArrayList<>();
-        for (int i = 1; i < board.width() - 1; i++)
-            for (int j = 1; j < board.height() - 1; j++)
-                if ((STile.BOX_FLAG & board.tiles[i][j]) != 0) res.add(new Point(i, j));
-        return res.toArray(Point[]::new);
     }
 }
