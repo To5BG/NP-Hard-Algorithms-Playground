@@ -32,6 +32,8 @@ import game.board.slim.STile;
 public class MyAgent extends ArtificialAgent {
     // Board that is currently being solved
     protected static BoardSlim board;
+    // Array for walls
+    protected static boolean[] walls;
     // Counter of searched nodes
     protected int searchedNodes;
     // Higher dimension of board -> used for boxes pos bitmask (to avoid collisions)
@@ -53,9 +55,11 @@ public class MyAgent extends ArtificialAgent {
         dsd = new DeadSquareDetector(MyAgent.board);
         // Initialize Zobrist hashtable, 0 -> boxes, 1 -> player
         zobrist_hashes = new Long[2][board.width()][board.height()];
+        walls = new boolean[board.width() * dim + board.height()];
         Random rand = new Random();
         for (int i = 0; i < board.width(); i++)
             for (int j = 0; j < board.height(); j++) {
+                if (STile.isWall(MyAgent.board.tiles[i][j])) walls[i * dim + j] = true;
                 zobrist_hashes[0][i][j] = rand.nextLong();
                 zobrist_hashes[1][i][j] = rand.nextLong();
             }
@@ -89,13 +93,16 @@ public class MyAgent extends ArtificialAgent {
         BitSet boxes = new BitSet(board.width() * board.height());
         for (Point box : findEntities(board, STile.BOX_FLAG)) boxes.set(box.x * dim + box.y);
         // Action placeholder, is ignored anyway
-        Node start = new Node(boxes, null, SPush.getAction(EDirection.RIGHT), 0, manhattanH(boxes),
+        Node start = new Node(boxes, null, true, EDirection.NONE, 0, manhattanH(boxes),
                 board.playerX, board.playerY);
         // Heuristic is consistent + uniform costs -> first reach is optimal (set sufficient)
         Set<Long> vis = new HashSet<>();
         vis.add(start.hashFull);
         Queue<Node> q = new PriorityQueue<>();
         q.add(start);
+        // Initialize all moves and pushes from start
+        List<SMove> moves = new ArrayList<>(SMove.getActions());
+        List<SPush> pushes = new ArrayList<>(SPush.getActions());
         // A*
         Node curr = null;
         while (!q.isEmpty()) {
@@ -107,26 +114,26 @@ public class MyAgent extends ArtificialAgent {
             if (completed) break;
             if (curr.g > maxCost) continue;
             List<SAction> actions = new ArrayList<>(4);
+            EDirection opposite = curr.pa.opposite();
             // Add possible moves
-            EDirection opposite = curr.pa.getDirection().opposite();
-            for (SMove move : SMove.getActions()) {
+            for (SMove move : moves) {
                 EDirection dir = move.getDirection();
                 int nextX = curr.playerX + dir.dX, nextY = curr.playerY + dir.dY;
                 // Next square is free (no wall)
-                if ((board.tiles[nextX][nextY] & STile.WALL_FLAG) == 0 &&
+                if (!walls[nextX * dim + nextY] &&
                         // Player does not backtrack
-                        !(curr.pa instanceof SMove && dir.equals(opposite))
+                        (curr.wasPreviousPush || !dir.equals(opposite))
                         // Next square is free (no box) -> put here because second condition is more restricting
                         && !curr.boxes.get(nextX * dim + nextY))
                     actions.add(move);
             }
             // Add possible pushes
-            for (SPush push : SPush.getActions()) {
+            for (SPush push : pushes) {
                 EDirection dir = push.getDirection();
                 int nextX = curr.playerX + dir.dX, nextY = curr.playerY + dir.dY;
                 int nextXX = nextX + dir.dX, nextYY = nextY + dir.dY;
                 // Next square has box, and next-next square is free (no wall or box)
-                if (curr.boxes.get(nextX * dim + nextY) && (board.tiles[nextXX][nextYY] & STile.WALL_FLAG) == 0 &&
+                if (curr.boxes.get(nextX * dim + nextY) && !walls[nextXX * dim  + nextYY] &&
                         !curr.boxes.get(nextXX * dim + nextYY))
                     actions.add(push);
             }
@@ -159,7 +166,7 @@ public class MyAgent extends ArtificialAgent {
         if (curr == null || !completed) return null;
         List<EDirection> actions = new LinkedList<>();
         while (curr.parent != null) {
-            actions.add(0, curr.pa.getDirection());
+            actions.add(0, curr.pa);
             curr = curr.parent;
         }
         System.out.print(Arrays.stream(dsd.skipped).mapToObj(i -> i + " ").reduce("", String::concat));
@@ -181,22 +188,25 @@ public class MyAgent extends ArtificialAgent {
     static class Node implements Comparable<Node> {
         BitSet boxes;
         Node parent;
-        SAction pa;
+        boolean wasPreviousPush;
+        EDirection pa;
         int playerX, playerY, g;
         long hashBox, hashFull;
         float h;
 
-        public Node(BitSet boxes, Node parent, SAction pa, int g, float h, int playerX, int playerY) {
-            this(boxes, parent, pa, g, h, playerX, playerY, 0L, 0L);
+        public Node(BitSet boxes, Node parent, boolean wasPreviousPush, EDirection pa, int g, float h, int playerX,
+                    int playerY) {
+            this(boxes, parent, wasPreviousPush, pa, g, h, playerX, playerY, 0L, 0L);
             boxes.stream().forEach(e -> this.hashBox ^= zobrist_hashes[0][e / dim][e % dim]);
             this.hashFull = this.hashBox;
             this.hashFull ^= zobrist_hashes[1][playerX][playerY];
         }
 
-        public Node(BitSet boxes, Node parent, SAction pa, int g, float h, int playerX, int playerY, Long hashBox,
-                    Long hashFull) {
+        public Node(BitSet boxes, Node parent, boolean wasPreviousPush, EDirection pa, int g, float h, int playerX,
+                    int playerY, Long hashBox, Long hashFull) {
             this.boxes = boxes;
             this.parent = parent;
+            this.wasPreviousPush = wasPreviousPush;
             this.pa = pa;
             this.g = g;
             this.h = h;
@@ -207,7 +217,8 @@ public class MyAgent extends ArtificialAgent {
         }
 
         public Node copy(SAction pa) {
-            return new Node((BitSet) boxes.clone(), this, pa, g + 1, h, playerX, playerY, hashBox, hashFull);
+            return new Node((BitSet) boxes.clone(), this, pa instanceof SPush, pa.getDirection(), g + 1, h,
+                    playerX, playerY, hashBox, hashFull);
         }
 
         public void movePlayer(int tx, int ty) {
@@ -304,7 +315,7 @@ public class MyAgent extends ArtificialAgent {
             for (int i = 0; i < 2; i++) {
                 int dx = x + dirs[i], dy = y + dirs[i + 1], ddx = x + dirs[i + 2], ddy = y + dirs[(i + 3) % 4];
                 // Check for an axis if there's 1 wall, or 2 dead states
-                frozen[i] = STile.isWall(board.tiles[dx][dy]) || STile.isWall(board.tiles[ddx][ddy]) ||
+                frozen[i] = walls[dx * dim + dy] || walls[ddx * dim + ddy] ||
                         bs.get(dim * dx + dy) || bs.get(dim * ddx + ddy) || (dead[dx][dy] && dead[ddx][ddy]);
             }
             // If frozen from both axes - short-circuit guard
@@ -343,9 +354,8 @@ public class MyAgent extends ArtificialAgent {
             // Return cached config if possible
             if (corralCache.containsKey(hash)) return corralCache.get(hash);
             // If neighboring tiles are not obstacles, cannot form a coral
-            if ((board.tiles[x - dy][y - dx] & STile.WALL_FLAG) == 0 ||
-                    (board.tiles[x + dy][y + dx] & STile.WALL_FLAG) == 0) return false;
-            if ((board.tiles[x + dx][y + dy] & STile.WALL_FLAG) != 0) return false;
+            if (!STile.isWall(board.tiles[x - dy][y - dx]) || !STile.isWall(board.tiles[x + dy][y + dx])) return false;
+            if (STile.isWall(board.tiles[x + dx][y + dy])) return false;
             corral = true;
             corralBoxes = corralGoals = 0;
             floodFill(boxes, x + dx, y + dy, pX, pY, new boolean[board.width()][board.height()]);
@@ -366,7 +376,7 @@ public class MyAgent extends ArtificialAgent {
             // Check for goal
             if ((board.tiles[x][y] & STile.PLACE_FLAG) != 0) corralGoals++;
             // Check that it is not a wall
-            if ((board.tiles[x][y] & STile.WALL_FLAG) != 0) return;
+            if (STile.isWall(board.tiles[x][y])) return;
             // Check for box
             if (boxes.get(x * dim + y)) {
                 corralBoxes++;
