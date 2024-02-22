@@ -113,51 +113,37 @@ public class MyAgent extends ArtificialAgent {
             // Heuristic is admissible - first goal reach is optimal
             if (completed) break;
             if (curr.g > maxCost) continue;
-            List<SAction> actions = new ArrayList<>(4);
-            EDirection opposite = curr.pa.opposite();
-            // Add possible moves
-            for (SMove move : moves) {
-                EDirection dir = move.getDirection();
-                int nextX = curr.playerX + dir.dX, nextY = curr.playerY + dir.dY;
-                // Next square is free (no wall)
-                if (!walls[nextX * dim + nextY] &&
-                        // Player does not backtrack
-                        (curr.wasPreviousPush || !dir.equals(opposite))
-                        // Next square is free (no box) -> put here because second condition is more restricting
-                        && !curr.boxes.get(nextX * dim + nextY))
-                    actions.add(move);
-            }
             // Add possible pushes
             for (SPush push : pushes) {
                 EDirection dir = push.getDirection();
                 int nextX = curr.playerX + dir.dX, nextY = curr.playerY + dir.dY;
-                int nextXX = nextX + dir.dX, nextYY = nextY + dir.dY;
+                int nextXX = nextX + dir.dX, nextYY = nextY + dir.dY, nextXY = nextXX * dim + nextYY;
                 // Next square has box, and next-next square is free (no wall or box)
-                if (curr.boxes.get(nextX * dim + nextY) && !walls[nextXX * dim  + nextYY] &&
-                        !curr.boxes.get(nextXX * dim + nextYY))
-                    actions.add(push);
-            }
-            // For each possible action
-            for (SAction action : actions) {
-                Node next = curr.copy(action);
-                EDirection dir = action.getDirection();
-                int nextX = next.playerX + dir.dX, nextY = next.playerY + dir.dY;
-                // Slight code repetition because pushes have a lot of extra logic
-                if (action instanceof SPush) {
-                    int nextXX = nextX + dir.dX, nextYY = nextY + dir.dY;
-                    next.moveBox(nextX, nextY, nextXX, nextYY);
-                    next.movePlayer(nextX, nextY);
-                    if (vis.contains(next.hashFull) || dsd.detectSimple(nextXX, nextYY)
-                            || dsd.detectFreeze(next.boxes, nextXX, nextYY, next.hashBox))
+                if (!curr.boxes.get(nextX * dim + nextY) || walls[nextXY] || curr.boxes.get(nextXY)) continue;
+                Node next = curr.copy(push);
+                next.moveBox(nextX, nextY, nextXX, nextYY);
+                next.movePlayer(nextX, nextY);
+                if (vis.contains(next.hashFull) || dsd.detectSimple(nextXX, nextYY)
+                        || dsd.detectFreeze(next.boxes, nextXX, nextYY, next.hashBox))
 //                            || dsd.detectCorral(next.boxes, nextXX, nextYY, dir.dX, dir.dY, next.playerX,
 //                        next.playerY, next.hashFull))
-                        continue;
-                    next.h = manhattanH(next.boxes);
-                } else {
-                    // SMove -> boxes unchanged -> redundant deadlock detection and heuristic recalculation
-                    next.movePlayer(nextX, nextY);
-                    if (vis.contains(next.hashFull)) continue;
-                }
+                    continue;
+                next.h = manhattanH(next.boxes);
+                vis.add(next.hashFull);
+                q.add(next);
+            }
+            EDirection opposite = curr.pa.opposite();
+            // Add possible moves
+            for (SMove move : moves) {
+                EDirection dir = move.getDirection();
+                int nextX = curr.playerX + dir.dX, nextY = curr.playerY + dir.dY, nextXY = nextX * dim + nextY;
+                // Next square is free (no wall/box), and player does not backtrack
+                if (walls[nextXY] || (!curr.wasPreviousPush && dir.equals(opposite)) || curr.boxes.get(nextXY))
+                    continue;
+                Node next = curr.copy(move);
+                // SMove -> boxes unchanged -> redundant deadlock detection and heuristic recalculation
+                next.movePlayer(nextX, nextY);
+                if (vis.contains(next.hashFull)) continue;
                 vis.add(next.hashFull);
                 q.add(next);
             }
@@ -314,9 +300,10 @@ public class MyAgent extends ArtificialAgent {
             boolean[] frozen = new boolean[2];
             for (int i = 0; i < 2; i++) {
                 int dx = x + dirs[i], dy = y + dirs[i + 1], ddx = x + dirs[i + 2], ddy = y + dirs[(i + 3) % 4];
+                int dxy = dx * dim + dy, ddxy = ddx * dim + ddy;
                 // Check for an axis if there's 1 wall, or 2 dead states
-                frozen[i] = walls[dx * dim + dy] || walls[ddx * dim + ddy] ||
-                        bs.get(dim * dx + dy) || bs.get(dim * ddx + ddy) || (dead[dx][dy] && dead[ddx][ddy]);
+                frozen[i] = walls[dxy] || walls[ddxy] || bs.get(dxy) || bs.get(ddxy) ||
+                        (dead[dx][dy] && dead[ddx][ddy]);
             }
             // If frozen from both axes - short-circuit guard
             if (frozen[0] && frozen[1]) {
@@ -327,15 +314,13 @@ public class MyAgent extends ArtificialAgent {
                 if (frozen[i]) {
                     // Prevent circular check
                     bs.set(x * dim + y);
-                    int dy = y + dirs[i], dx = x + dirs[i + 1];
+                    int dy = y + dirs[i], dx = x + dirs[i + 1], dxy = dx * dim + dy;
                     // If box -> recursively check if next box is frozen
-                    if (boxes.get(dx * dim + dy) && !bs.get(dx * dim + dy))
-                        frozen[1 - i] = detectFreeze(boxes, dx, dy, f, bs);
+                    if (boxes.get(dxy) && !bs.get(dxy)) frozen[1 - i] = detectFreeze(boxes, dx, dy, f, bs);
                     // Short-circuit guard
                     if (frozen[1 - i]) break;
-                    int ddy = y + dirs[i + 2], ddx = x + dirs[(i + 3) % 4];
-                    if (boxes.get(ddx * dim + ddy) && !bs.get(ddx * dim + ddy))
-                        frozen[1 - i] = detectFreeze(boxes, ddx, ddy, f, bs);
+                    int ddy = y + dirs[i + 2], ddx = x + dirs[(i + 3) % 4], ddxy = ddx * dim + ddy;
+                    if (boxes.get(ddxy) && !bs.get(ddxy)) frozen[1 - i] = detectFreeze(boxes, ddx, ddy, f, bs);
                     // Short-circuit guard
                     if (frozen[1 - i]) break;
                 }
