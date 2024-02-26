@@ -1,7 +1,6 @@
 import static java.lang.System.out;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.BitSet;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -12,7 +11,6 @@ import java.util.PriorityQueue;
 import java.util.Queue;
 import java.util.Random;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 import agents.ArtificialAgent;
 import game.actions.EDirection;
@@ -24,11 +22,6 @@ import game.board.slim.BoardSlim;
 import game.board.slim.STile;
 
 
-/**
- * A* Agent
- *
- * @author Alperen Guncan
- */
 public class MyAgent extends ArtificialAgent {
     // Board that is currently being solved
     protected static BoardSlim board;
@@ -63,38 +56,27 @@ public class MyAgent extends ArtificialAgent {
                 zobrist_hashes[0][i][j] = rand.nextLong();
                 zobrist_hashes[1][i][j] = rand.nextLong();
             }
-        // Start from 1 (or higher) for less risky solver
-        int corralRisk = 0, corralStep = 1, maxCost = 500;
+        int maxCost = 500;
         long searchStartMillis = System.currentTimeMillis();
-        while (corralRisk <= MyAgent.board.boxCount) {
-            // Clear cache from old corrals
-            dsd.corralCache = dsd.corralCache.entrySet().stream().filter(e -> !e.getValue())
-                    .collect(Collectors.toMap(Map.Entry::getKey, stringBooleanEntry -> false));
-            dsd.skipped = new int[]{0, 0, 0};
-            dsd.corralRisk = corralRisk;
-            List<EDirection> result = a_star(maxCost, corralRisk); // depth of search tree
-            corralRisk += corralStep;
-            if (result == null) continue;
-            long searchTime = System.currentTimeMillis() - searchStartMillis;
-            if (verbose) {
-                out.println("Nodes visited: " + searchedNodes);
-                out.printf("Performance: %.1f nodes/sec\n",
-                        ((double) searchedNodes / (double) searchTime * 1000));
-            }
-            if (!result.isEmpty()) return result;
+        dsd.skipped = new int[]{0, 0, 0};
+        List<EDirection> result = a_star(maxCost); // depth of search tree
+        long searchTime = System.currentTimeMillis() - searchStartMillis;
+        if (verbose) {
+            out.println("Nodes visited: " + searchedNodes);
+            out.printf("Performance: %.1f nodes/sec\n",
+                    ((double) searchedNodes / (double) searchTime * 1000));
         }
-        return null;
+        return result;
     }
 
-    private List<EDirection> a_star(int maxCost, int corralRisk) {
+    private List<EDirection> a_star(int maxCost) {
         // Initialize
         boolean completed = false;
         long completedHash = goals.stream().map(g -> zobrist_hashes[0][g.x][g.y]).reduce(0L, (a, e) -> a ^ e);
         BitSet boxes = new BitSet(board.width() * board.height());
         for (Point box : findEntities(board, STile.BOX_FLAG)) boxes.set(box.x * dim + box.y);
         // Action placeholder, is ignored anyway
-        Node start = new Node(boxes, null, true, EDirection.NONE, 0, manhattanH(boxes),
-                board.playerX, board.playerY);
+        Node start = new Node(boxes, null, true, EDirection.NONE, 0, manhattanH(boxes), board.playerX, board.playerY);
         // Heuristic is consistent + uniform costs -> first reach is optimal (set sufficient)
         Set<Long> vis = new HashSet<>();
         vis.add(start.hashFull);
@@ -125,8 +107,6 @@ public class MyAgent extends ArtificialAgent {
                 next.movePlayer(nextX, nextY);
                 if (vis.contains(next.hashFull) || dsd.detectSimple(nextXX, nextYY)
                         || dsd.detectFreeze(next.boxes, nextXX, nextYY, next.hashBox))
-//                            || dsd.detectCorral(next.boxes, nextXX, nextYY, dir.dX, dir.dY, next.playerX,
-//                        next.playerY, next.hashFull))
                     continue;
                 next.h = manhattanH(next.boxes);
                 vis.add(next.hashFull);
@@ -155,9 +135,8 @@ public class MyAgent extends ArtificialAgent {
             actions.add(0, curr.pa);
             curr = curr.parent;
         }
-        System.out.print(Arrays.stream(dsd.skipped).mapToObj(i -> i + " ").reduce("", String::concat));
-        System.out.println("risk: " + corralRisk);
-        System.out.println(actions.stream().map(o -> o.toString().substring(0, 1)).collect(Collectors.joining()));
+        // System.out.print(Arrays.stream(dsd.skipped).mapToObj(i -> i + " ").reduce("", String::concat));
+        // System.out.println(actions.stream().map(o -> o.toString().substring(0, 1)).collect(Collectors.joining()));
         return actions;
     }
 
@@ -165,8 +144,7 @@ public class MyAgent extends ArtificialAgent {
     private float manhattanH(BitSet boxes) {
         return boxes.stream().map(b -> {
             int bX = b / dim, bY = b % dim;
-            return goals.stream().map(g -> Math.abs(g.x - bX) + Math.abs(g.y - bY))
-                    .reduce(Math::min).orElse(0);
+            return goals.stream().map(g -> Math.abs(g.x - bX) + Math.abs(g.y - bY)).reduce(Math::min).orElse(0);
         }).reduce(Integer::sum).orElse(0);
     }
 
@@ -242,18 +220,15 @@ public class MyAgent extends ArtificialAgent {
         boolean[][] dead;
         // Skipped states counter for different deadlock types, and directions helper (used for flooding)
         int[] skipped = new int[]{0, 0, 0}, dirs = new int[]{-1, 0, 1, 0};
-        // 'Global' variables/counters visible to all recursive stacks for corral deadlock detection
-        boolean corral = true;
-        int corralRisk = 0, corralBoxes = 0, corralGoals = 0;
         // Caches for freeze and corral deadlocks
-        Map<Long, Boolean> freezeCache = new HashMap<>(), corralCache = new HashMap<>();
+        Map<Long, Boolean> freezeCache = new HashMap<>();
 
         public DeadSquareDetector(BoardSlim board) {
-            this.dead = this.detectSimple(board);
+            this.dead = this.detect(board);
         }
 
         // Detect simple deadlocks (static) - tiles from which a box cannot move, independent of other boxes
-        public boolean[][] detectSimple(BoardSlim board) {
+        public boolean[][] detect(BoardSlim board) {
             boolean[][] res = new boolean[board.width()][board.height()];
             // Flood fill for dead squares, starting from each goal
             for (Point goal : findEntities(board, STile.PLACE_FLAG)) pull(board, res, goal.x, goal.y);
@@ -330,51 +305,6 @@ public class MyAgent extends ArtificialAgent {
                 return true;
             }
             return false;
-        }
-
-        @SuppressWarnings("unused")
-        // Detect corral deadlocks - when pushed box forms a closed unreachable area with not enough goals
-        public boolean detectCorral(BitSet boxes, int x, int y, int dx, int dy, int pX, int pY, Long hash) {
-            if (corralRisk == board.boxCount) return false;
-            // Return cached config if possible
-            if (corralCache.containsKey(hash)) return corralCache.get(hash);
-            // If neighboring tiles are not obstacles, cannot form a coral
-            if (!STile.isWall(board.tiles[x - dy][y - dx]) || !STile.isWall(board.tiles[x + dy][y + dx])) return false;
-            if (STile.isWall(board.tiles[x + dx][y + dy])) return false;
-            corral = true;
-            corralBoxes = corralGoals = 0;
-            floodFill(boxes, x + dx, y + dy, pX, pY, new boolean[board.width()][board.height()]);
-            // If player or enough goals inside coral, then may be solvable
-            boolean res = corral && corralGoals + corralRisk < corralBoxes;
-            if (res) this.skipped[2]++;
-            corralCache.put(hash, res);
-            return res;
-        }
-
-        private void floodFill(BitSet boxes, int x, int y, int playerX, int playerY, boolean[][] seen) {
-            seen[x][y] = true;
-            // Check for player
-            if (playerX == x && playerY == y) {
-                corral = false;
-                return;
-            }
-            // Check for goal
-            if ((board.tiles[x][y] & STile.PLACE_FLAG) != 0) corralGoals++;
-            // Check that it is not a wall
-            if (STile.isWall(board.tiles[x][y])) return;
-            // Check for box
-            if (boxes.get(x * dim + y)) {
-                corralBoxes++;
-                return;
-            }
-            // Continue flooding
-            for (int i = 0; i < 4; i++) {
-                // Check bounds and unvisited
-                int nx = x + dirs[i], ny = y + dirs[(i + 1) % 4];
-                if (nx == 0 || ny == 0 || nx == seen.length - 1 || ny == seen[0].length - 1) continue;
-                if (seen[nx][ny] || !corral) continue;
-                floodFill(boxes, nx, ny, playerX, playerY, seen);
-            }
         }
     }
 
