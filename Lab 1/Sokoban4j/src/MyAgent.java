@@ -31,7 +31,7 @@ public class MyAgent extends ArtificialAgent {
     protected int searchedNodes;
     // Higher dimension of board -> used for boxes pos bitmask (to avoid collisions)
     protected static int dim;
-    // Goal pos
+    // Goal positions
     private List<Point> goals;
     // Composition with DeadSquareDetector
     private DeadSquareDetector dsd;
@@ -77,16 +77,17 @@ public class MyAgent extends ArtificialAgent {
         for (Point box : findEntities(board, STile.BOX_FLAG)) boxes.set(box.x * dim + box.y);
         // Action placeholder, is ignored anyway
         Node start = new Node(boxes, null, true, EDirection.NONE, 0, manhattanH(boxes), board.playerX, board.playerY);
+        State start = new State(boxes, null, true, EDirection.NONE, 0,
         // Heuristic is consistent + uniform costs -> first reach is optimal (set sufficient)
         Set<Long> vis = new HashSet<>();
         vis.add(start.hashFull);
-        Queue<Node> q = new PriorityQueue<>();
+        Queue<State> q = new PriorityQueue<>();
         q.add(start);
         // Initialize all moves and pushes from start
         List<SMove> moves = new ArrayList<>(SMove.getActions());
         List<SPush> pushes = new ArrayList<>(SPush.getActions());
         // A*
-        Node curr = null;
+        State curr = null;
         while (!q.isEmpty()) {
             curr = q.poll();
             searchedNodes++;
@@ -103,6 +104,7 @@ public class MyAgent extends ArtificialAgent {
                 // Next square has box, and next-next square is free (no wall or box)
                 if (!curr.boxes.get(nextX * dim + nextY) || walls[nextXY] || curr.boxes.get(nextXY)) continue;
                 Node next = curr.copy(push);
+                State next = curr.copy(push);
                 next.moveBox(nextX, nextY, nextXX, nextYY);
                 next.movePlayer(nextX, nextY);
                 if (vis.contains(next.hashFull) || dsd.detectSimple(nextXX, nextYY)
@@ -120,7 +122,7 @@ public class MyAgent extends ArtificialAgent {
                 // Next square is free (no wall/box), and player does not backtrack
                 if (walls[nextXY] || (!curr.wasPreviousPush && dir.equals(opposite)) || curr.boxes.get(nextXY))
                     continue;
-                Node next = curr.copy(move);
+                State next = curr.copy(move);
                 // SMove -> boxes unchanged -> redundant deadlock detection and heuristic recalculation
                 next.movePlayer(nextX, nextY);
                 if (vis.contains(next.hashFull)) continue;
@@ -148,26 +150,25 @@ public class MyAgent extends ArtificialAgent {
         }).reduce(Integer::sum).orElse(0);
     }
 
-    // State
-    static class Node implements Comparable<Node> {
+    static class State implements Comparable<State> {
         BitSet boxes;
-        Node parent;
+        State parent;
         boolean wasPreviousPush;
         EDirection pa;
         int playerX, playerY, g;
         long hashBox, hashFull;
         float h;
 
-        public Node(BitSet boxes, Node parent, boolean wasPreviousPush, EDirection pa, int g, float h, int playerX,
-                    int playerY) {
+        public State(BitSet boxes, State parent, boolean wasPreviousPush, EDirection pa, int g, float h, int playerX,
+                     int playerY) {
             this(boxes, parent, wasPreviousPush, pa, g, h, playerX, playerY, 0L, 0L);
             boxes.stream().forEach(e -> this.hashBox ^= zobrist_hashes[0][e / dim][e % dim]);
             this.hashFull = this.hashBox;
             this.hashFull ^= zobrist_hashes[1][playerX][playerY];
         }
 
-        public Node(BitSet boxes, Node parent, boolean wasPreviousPush, EDirection pa, int g, float h, int playerX,
-                    int playerY, Long hashBox, Long hashFull) {
+        public State(BitSet boxes, State parent, boolean wasPreviousPush, EDirection pa, int g, float h, int playerX,
+                     int playerY, Long hashBox, Long hashFull) {
             this.boxes = boxes;
             this.parent = parent;
             this.wasPreviousPush = wasPreviousPush;
@@ -180,8 +181,8 @@ public class MyAgent extends ArtificialAgent {
             this.hashFull = hashFull;
         }
 
-        public Node copy(SAction pa) {
-            return new Node((BitSet) boxes.clone(), this, pa instanceof SPush, pa.getDirection(), g + 1, h,
+        public State copy(SAction pa) {
+            return new State((BitSet) boxes.clone(), this, pa instanceof SPush, pa.getDirection(), g + 1, h,
                     playerX, playerY, hashBox, hashFull);
         }
 
@@ -199,7 +200,7 @@ public class MyAgent extends ArtificialAgent {
             hashBox ^= zobrist_hashes[0][tx][ty];
         }
 
-        public int compareTo(Node o) {
+        public int compareTo(State o) {
             return Float.compare(this.g + this.h, o.g + o.h);
         }
     }
