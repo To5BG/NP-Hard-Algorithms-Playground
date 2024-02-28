@@ -1,6 +1,8 @@
 import static java.lang.System.out;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.BitSet;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -27,6 +29,8 @@ public class MyAgent extends ArtificialAgent {
     protected static BoardSlim board;
     // Array for walls
     protected static boolean[] walls;
+    // Array containing distance between tile and closest goal, and helper dirs array
+    protected static int[] minDists, dirs = new int[]{-1, 0, 1, 0};
     // Counter of searched nodes
     protected int searchedNodes;
     // Higher dimension of board -> used for boxes pos bitmask (to avoid collisions)
@@ -39,23 +43,23 @@ public class MyAgent extends ArtificialAgent {
     private static Long[][][] zobrist_hashes;
 
     @Override
-    protected List<EDirection> think(BoardCompact board) {
-        MyAgent.board = board.makeBoardSlim();
+    protected List<EDirection> think(BoardCompact origBoard) {
+        board = origBoard.makeBoardSlim();
         searchedNodes = 0;
-        // Find longer side for avoiding collisions on box bitmask
-        dim = Math.max(board.width(), board.height());
-        goals = findEntities(MyAgent.board, STile.PLACE_FLAG);
-        dsd = new DeadSquareDetector(MyAgent.board);
+        dim = board.height();
+        goals = findEntities(board, STile.PLACE_FLAG);
+        dsd = new DeadSquareDetector(board);
         // Initialize Zobrist hashtable, 0 -> boxes, 1 -> player
         zobrist_hashes = new Long[2][board.width()][board.height()];
-        walls = new boolean[board.width() * dim + board.height()];
+        walls = new boolean[board.width() * board.height()];
         Random rand = new Random();
         for (int i = 0; i < board.width(); i++)
             for (int j = 0; j < board.height(); j++) {
-                if (STile.isWall(MyAgent.board.tiles[i][j])) walls[i * dim + j] = true;
+                if (STile.isWall(board.tiles[i][j])) walls[i * dim + j] = true;
                 zobrist_hashes[0][i][j] = rand.nextLong();
                 zobrist_hashes[1][i][j] = rand.nextLong();
             }
+        calculateMinDistTable(board.width() * board.height());
         int maxCost = 500;
         long searchStartMillis = System.currentTimeMillis();
         dsd.skipped = new int[]{0, 0, 0};
@@ -76,8 +80,8 @@ public class MyAgent extends ArtificialAgent {
         BitSet boxes = new BitSet(board.width() * board.height());
         for (Point box : findEntities(board, STile.BOX_FLAG)) boxes.set(box.x * dim + box.y);
         // Action placeholder, is ignored anyway
-        Node start = new Node(boxes, null, true, EDirection.NONE, 0, manhattanH(boxes), board.playerX, board.playerY);
         State start = new State(boxes, null, true, EDirection.NONE, 0,
+                boxes.stream().map(i -> minDists[i]).sum(), board.playerX, board.playerY);
         // Heuristic is consistent + uniform costs -> first reach is optimal (set sufficient)
         Set<Long> vis = new HashSet<>();
         vis.add(start.hashFull);
@@ -99,18 +103,17 @@ public class MyAgent extends ArtificialAgent {
             // Add possible pushes
             for (SPush push : pushes) {
                 EDirection dir = push.getDirection();
-                int nextX = curr.playerX + dir.dX, nextY = curr.playerY + dir.dY;
-                int nextXX = nextX + dir.dX, nextYY = nextY + dir.dY, nextXY = nextXX * dim + nextYY;
+                int nextX = curr.playerX + dir.dX, nextY = curr.playerY + dir.dY, nextXY = nextX * dim + nextY;
+                int nextXX = nextX + dir.dX, nextYY = nextY + dir.dY, nextXXYY = nextXX * dim + nextYY;
                 // Next square has box, and next-next square is free (no wall or box)
-                if (!curr.boxes.get(nextX * dim + nextY) || walls[nextXY] || curr.boxes.get(nextXY)) continue;
-                Node next = curr.copy(push);
+                if (!curr.boxes.get(nextXY) || walls[nextXXYY] || curr.boxes.get(nextXXYY)) continue;
                 State next = curr.copy(push);
                 next.moveBox(nextX, nextY, nextXX, nextYY);
                 next.movePlayer(nextX, nextY);
                 if (vis.contains(next.hashFull) || dsd.detectSimple(nextXX, nextYY)
                         || dsd.detectFreeze(next.boxes, nextXX, nextYY, next.hashBox))
                     continue;
-                next.h = manhattanH(next.boxes);
+                next.h = curr.h - minDists[nextXY] + minDists[nextXXYY];
                 vis.add(next.hashFull);
                 q.add(next);
             }
@@ -142,12 +145,31 @@ public class MyAgent extends ArtificialAgent {
         return actions;
     }
 
-    // Heuristic function - manhattan closest matching
-    private float manhattanH(BitSet boxes) {
-        return boxes.stream().map(b -> {
-            int bX = b / dim, bY = b % dim;
-            return goals.stream().map(g -> Math.abs(g.x - bX) + Math.abs(g.y - bY)).reduce(Math::min).orElse(0);
-        }).reduce(Integer::sum).orElse(0);
+    private void calculateMinDistTable(int fullDim) {
+        minDists = new int[fullDim];
+        Arrays.fill(minDists, Integer.MAX_VALUE);
+        for (Point g : goals) {
+            int c = 0;
+            Queue<Integer> q = new ArrayDeque<>();
+            Set<Integer> vis = new HashSet<>();
+            q.add(g.x * dim + g.y);
+            while (true) {
+                Queue<Integer> qq = new ArrayDeque<>();
+                while (!q.isEmpty()) {
+                    int curr = q.remove();
+                    minDists[curr] = Math.min(minDists[curr], c);
+                    for (int i = 0; i < 4; i++) {
+                        Integer next = curr + (dirs[i] * dim) + dirs[(i + 1) % 4];
+                        if (vis.contains(next) || walls[next]) continue;
+                        vis.add(next);
+                        qq.add(next);
+                    }
+                }
+                if (qq.isEmpty()) break;
+                q.addAll(qq);
+                c++;
+            }
+        }
     }
 
     static class State implements Comparable<State> {
@@ -220,7 +242,7 @@ public class MyAgent extends ArtificialAgent {
         // Static dead square positions
         boolean[][] dead;
         // Skipped states counter for different deadlock types, and directions helper (used for flooding)
-        int[] skipped = new int[]{0, 0, 0}, dirs = new int[]{-1, 0, 1, 0};
+        int[] skipped = new int[]{0, 0, 0};
         // Caches for freeze and corral deadlocks
         Map<Long, Boolean> freezeCache = new HashMap<>();
 
