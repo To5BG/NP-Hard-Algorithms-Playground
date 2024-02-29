@@ -101,14 +101,19 @@ public class MyAgent extends ArtificialAgent {
             for (SPush push : pushes) {
                 EDirection dir = push.getDirection();
                 int nextX = curr.playerX + dir.dX, nextY = curr.playerY + dir.dY, nextXY = nextX * dim + nextY;
-                int nextXX = nextX + dir.dX, nextYY = nextY + dir.dY, nextXXYY = nextXX * dim + nextYY;
-                // Next square has box, and next-next square is free (no wall or box)
-                if (!curr.boxes.get(nextXY) || walls[nextXXYY] || curr.boxes.get(nextXXYY)) continue;
-                State next = curr.copy(push);
+                // No box in push-direction
+                if (!curr.boxes.get(nextXY)) continue;
+                int nextXX = nextX + dir.dX, nextYY = nextY + dir.dY;
+                // Dead future box position
+                if (dsd.detectSimple(nextXX, nextYY)) continue;
+                int nextXXYY = nextXX * dim + nextYY;
+                // Future box position is not free (wall or box)
+                if (walls[nextXXYY] || curr.boxes.get(nextXXYY)) continue;
+                State next = curr.copy(push, (BitSet) curr.boxes.clone());
                 next.moveBox(nextX, nextY, nextXX, nextYY);
                 next.movePlayer(nextX, nextY);
-                if (vis.contains(next.hashFull) || dsd.detectSimple(nextXX, nextYY)
-                        || dsd.detectFreeze(next.boxes, nextXX, nextYY, next.hashBox))
+                // Previously visited state or deadlocked
+                if (vis.contains(next.hashFull) || dsd.detectFreeze(next.boxes, nextXX, nextYY, next.hashBox))
                     continue;
                 next.h = curr.h - minDists[nextXY] + minDists[nextXXYY];
                 vis.add(next.hashFull);
@@ -118,12 +123,13 @@ public class MyAgent extends ArtificialAgent {
             // Add possible moves
             for (SMove move : moves) {
                 EDirection dir = move.getDirection();
+                // Next move returns to previous state - backtracking
+                if (!curr.wasPreviousPush && dir.equals(opposite)) continue;
                 int nextX = curr.playerX + dir.dX, nextY = curr.playerY + dir.dY, nextXY = nextX * dim + nextY;
-                // Next square is free (no wall/box), and player does not backtrack
-                if (walls[nextXY] || (!curr.wasPreviousPush && dir.equals(opposite)) || curr.boxes.get(nextXY))
-                    continue;
-                State next = curr.copy(move);
-                // SMove -> boxes unchanged -> redundant deadlock detection and heuristic recalculation
+                // Next square is not free (wall or box)
+                if (walls[nextXY] || curr.boxes.get(nextXY)) continue;
+                State next = curr.copy(move, curr.boxes);
+                // SMove -> boxes unchanged -> redundant deadlock detection, box cloning, and heuristic recalculation
                 next.movePlayer(nextX, nextY);
                 if (vis.contains(next.hashFull)) continue;
                 vis.add(next.hashFull);
@@ -200,8 +206,8 @@ public class MyAgent extends ArtificialAgent {
             this.hashFull = hashFull;
         }
 
-        public State copy(SAction pa) {
-            return new State((BitSet) boxes.clone(), this, pa instanceof SPush, pa.getDirection(), g + 1, h,
+        public State copy(SAction pa, BitSet boxes) {
+            return new State(boxes, this, pa instanceof SPush, pa.getDirection(), g + 1, h,
                     playerX, playerY, hashBox, hashFull);
         }
 
