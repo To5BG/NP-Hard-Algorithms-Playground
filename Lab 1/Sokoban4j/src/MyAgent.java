@@ -78,7 +78,7 @@ public class MyAgent extends ArtificialAgent {
         BitSet boxes = new BitSet(board.width() * board.height());
         for (Point box : findEntities(board, STile.BOX_FLAG)) boxes.set(box.x * dim + box.y);
         // Action placeholder, is ignored anyway
-        State start = new State(boxes, null, true, EDirection.NONE, 0,
+        State start = new State(boxes, null, EDirection.NONE, 0,
                 boxes.stream().map(i -> minDists[i]).sum(), board.playerX, board.playerY);
         // Heuristic is consistent + uniform costs -> first reach is optimal (set sufficient)
         Set<Long> vis = new HashSet<>();
@@ -109,29 +109,36 @@ public class MyAgent extends ArtificialAgent {
                 int nextXXYY = nextXX * dim + nextYY;
                 // Future box position is not free (wall or box)
                 if (walls[nextXXYY] || curr.boxes.get(nextXXYY)) continue;
-                State next = curr.copy(push, (BitSet) curr.boxes.clone());
-                next.moveBox(nextX, nextY, nextXX, nextYY);
-                next.movePlayer(nextX, nextY);
-                // Previously visited state or deadlocked
-                if (vis.contains(next.hashFull) || dsd.detectFreeze(next.boxes, nextXX, nextYY, next.hashBox))
-                    continue;
+                Long nextHashFull = curr.hashBox;
+                nextHashFull ^= zobrist_hashes[0][nextX][nextY];
+                nextHashFull ^= zobrist_hashes[0][nextXX][nextYY];
+                Long nextHashBox = nextHashFull;
+                nextHashFull ^= zobrist_hashes[1][nextX][nextY];
+                // Check if state visited
+                if (vis.contains(nextHashFull)) continue;
+                BitSet nextBoxes = (BitSet) curr.boxes.clone();
+                nextBoxes.clear(nextX * dim + nextY);
+                nextBoxes.set(nextXX * dim + nextYY);
+                // Check dynamic deadlock
+                if (dsd.detectFreeze(nextBoxes, nextXX, nextYY, nextHashBox)) continue;
+                State next = curr.copy(push, nextBoxes, nextHashBox, nextHashFull, nextX, nextY);
                 next.h = curr.h - minDists[nextXY] + minDists[nextXXYY];
                 vis.add(next.hashFull);
                 q.add(next);
             }
-            EDirection opposite = curr.pa.opposite();
             // Add possible moves
             for (SMove move : moves) {
                 EDirection dir = move.getDirection();
                 // Next move returns to previous state - backtracking
-                if (!curr.wasPreviousPush && dir.equals(opposite)) continue;
                 int nextX = curr.playerX + dir.dX, nextY = curr.playerY + dir.dY, nextXY = nextX * dim + nextY;
                 // Next square is not free (wall or box)
                 if (walls[nextXY] || curr.boxes.get(nextXY)) continue;
-                State next = curr.copy(move, curr.boxes);
+                Long nextHashFull = curr.hashBox;
+                nextHashFull ^= zobrist_hashes[1][nextX][nextY];
+                // Check if state visited
+                if (vis.contains(nextHashFull)) continue;
                 // SMove -> boxes unchanged -> redundant deadlock detection, box cloning, and heuristic recalculation
-                next.movePlayer(nextX, nextY);
-                if (vis.contains(next.hashFull)) continue;
+                State next = curr.copy(move, curr.boxes, curr.hashBox, nextHashFull, nextX, nextY);
                 vis.add(next.hashFull);
                 q.add(next);
             }
@@ -178,25 +185,21 @@ public class MyAgent extends ArtificialAgent {
     static class State implements Comparable<State> {
         BitSet boxes;
         State parent;
-        boolean wasPreviousPush;
         EDirection pa;
-        int playerX, playerY, g;
+        int playerX, playerY, g, h;
         long hashBox, hashFull;
-        float h;
 
-        public State(BitSet boxes, State parent, boolean wasPreviousPush, EDirection pa, int g, float h, int playerX,
-                     int playerY) {
-            this(boxes, parent, wasPreviousPush, pa, g, h, playerX, playerY, 0L, 0L);
+        public State(BitSet boxes, State parent, EDirection pa, int g, int h, int playerX, int playerY) {
+            this(boxes, parent, pa, g, h, playerX, playerY, 0L, 0L);
             boxes.stream().forEach(e -> this.hashBox ^= zobrist_hashes[0][e / dim][e % dim]);
             this.hashFull = this.hashBox;
             this.hashFull ^= zobrist_hashes[1][playerX][playerY];
         }
 
-        public State(BitSet boxes, State parent, boolean wasPreviousPush, EDirection pa, int g, float h, int playerX,
-                     int playerY, Long hashBox, Long hashFull) {
+        public State(BitSet boxes, State parent, EDirection pa, int g, int h, int playerX, int playerY,
+                     Long hashBox, Long hashFull) {
             this.boxes = boxes;
             this.parent = parent;
-            this.wasPreviousPush = wasPreviousPush;
             this.pa = pa;
             this.g = g;
             this.h = h;
@@ -206,23 +209,8 @@ public class MyAgent extends ArtificialAgent {
             this.hashFull = hashFull;
         }
 
-        public State copy(SAction pa, BitSet boxes) {
-            return new State(boxes, this, pa instanceof SPush, pa.getDirection(), g + 1, h,
-                    playerX, playerY, hashBox, hashFull);
-        }
-
-        public void movePlayer(int tx, int ty) {
-            playerX = tx;
-            playerY = ty;
-            hashFull = hashBox;
-            hashFull ^= zobrist_hashes[1][tx][ty];
-        }
-
-        public void moveBox(int x, int y, int tx, int ty) {
-            boxes.clear(x * dim + y);
-            boxes.set(tx * dim + ty);
-            hashBox ^= zobrist_hashes[0][x][y];
-            hashBox ^= zobrist_hashes[0][tx][ty];
+        public State copy(SAction pa, BitSet boxes, Long hashBox, Long hashFull, int px, int py) {
+            return new State(boxes, this, pa.getDirection(), g + 1, h, px, py, hashBox, hashFull);
         }
 
         public int compareTo(State o) {
@@ -286,9 +274,9 @@ public class MyAgent extends ArtificialAgent {
         public boolean detectFreeze(BitSet boxes, int x, int y, Long hash) {
             // Return cached config if possible
             if (freezeCache.containsKey(hash)) return freezeCache.get(hash);
-            Set<Integer> frozen = new HashSet<>();
+            List<Integer> frozen = new ArrayList<>();
             // Get all frozen blocks in curr config
-            detectFreeze(boxes, x, y, frozen, new BitSet(board.width() * dim + board.height()));
+            detectFreeze(boxes, x, y, frozen, new BitSet(board.width() * board.height()));
             // If any frozen block is not on goal -> dead state
             boolean res = frozen.stream().anyMatch(b -> (STile.PLACE_FLAG & board.tiles[b / dim][b % dim]) == 0);
             if (res) this.skipped[1]++;
@@ -296,7 +284,7 @@ public class MyAgent extends ArtificialAgent {
             return res;
         }
 
-        private boolean detectFreeze(BitSet boxes, int x, int y, Set<Integer> f, BitSet bs) {
+        private boolean detectFreeze(BitSet boxes, int x, int y, List<Integer> f, BitSet bs) {
             // Check if frozen in x- and y-axis
             boolean[] frozen = new boolean[2];
             for (int i = 0; i < 2; i++) {
