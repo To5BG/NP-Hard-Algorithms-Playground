@@ -3,22 +3,17 @@ import static java.lang.System.out;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.BitSet;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.PriorityQueue;
 import java.util.Queue;
 import java.util.Random;
-import java.util.Set;
+import java.util.stream.Collectors;
 
 import agents.ArtificialAgent;
 import game.actions.EDirection;
-import game.actions.slim.SAction;
-import game.actions.slim.SMove;
-import game.actions.slim.SPush;
 import game.board.compact.BoardCompact;
 import game.board.slim.BoardSlim;
 import game.board.slim.STile;
@@ -28,13 +23,13 @@ public class MyAgent extends ArtificialAgent {
     // Board that is currently being solved
     protected static BoardSlim board;
     // Array for walls
-    protected static boolean[] walls;
+    protected static boolean[][] walls;
     // Array containing distance between tile and closest goal, and helper dirs array
-    protected static int[] minDists, dirs = new int[]{-1, 0, 1, 0};
+    protected static int[][] minDists;
+    // Dir helper for picking directions cleanly
+    protected static int[] dirs = new int[]{-1, 0, 1, 0};
     // Counter of searched nodes
     protected int searchedNodes;
-    // Higher dimension of board -> used for boxes pos bitmask (to avoid collisions)
-    protected static int dim;
     // Goal positions
     private List<Point> goals;
     // Composition with DeadSquareDetector
@@ -46,22 +41,21 @@ public class MyAgent extends ArtificialAgent {
     protected List<EDirection> think(BoardCompact origBoard) {
         board = origBoard.makeBoardSlim();
         searchedNodes = 0;
-        dim = board.height();
         goals = findEntities(board, STile.PLACE_FLAG);
         dsd = new DeadSquareDetector(board);
         // Initialize Zobrist hashtable, 0 -> boxes, 1 -> player
         zobrist_hashes = new Long[2][board.width()][board.height()];
-        walls = new boolean[board.width() * board.height()];
+        walls = new boolean[board.width()][board.height()];
         Random rand = new Random();
         for (int i = 0; i < board.width(); i++)
             for (int j = 0; j < board.height(); j++) {
-                if (STile.isWall(board.tiles[i][j])) walls[i * dim + j] = true;
+                if (STile.isWall(board.tiles[i][j])) walls[i][j] = true;
                 zobrist_hashes[0][i][j] = rand.nextLong();
                 zobrist_hashes[1][i][j] = rand.nextLong();
             }
-        calculateMinDistTable(board.width() * board.height());
+        calculateMinDistTable();
         long searchStartMillis = System.currentTimeMillis();
-        List<EDirection> result = a_star(); // depth of search tree
+        List<EDirection> result = a_star();
         long searchTime = System.currentTimeMillis() - searchStartMillis;
         if (verbose) {
             out.println("Nodes visited: " + searchedNodes);
@@ -75,72 +69,75 @@ public class MyAgent extends ArtificialAgent {
         // Initialize
         boolean completed = false;
         long completedHash = goals.stream().map(g -> zobrist_hashes[0][g.x][g.y]).reduce(0L, (a, e) -> a ^ e);
-        BitSet boxes = new BitSet(board.width() * board.height());
-        for (Point box : findEntities(board, STile.BOX_FLAG)) boxes.set(box.x * dim + box.y);
+        short[] boxes = new short[board.boxCount];
+        int startH = 0, idx = 0;
+        for (Point box : findEntities(board, STile.BOX_FLAG)) {
+            boxes[idx++] = (short) ((box.x & 0xFF) | (box.y & 0xFF) << 8);
+            startH += minDists[box.x][box.y];
+        }
         // Action placeholder, is ignored anyway
-        State start = new State(boxes, null, EDirection.NONE, 0,
-                boxes.stream().map(i -> minDists[i]).sum(), board.playerX, board.playerY);
+        State start = new State(boxes, null, EDirection.NONE, startH, board.playerX, board.playerY);
         // Heuristic is consistent + uniform costs -> first reach is optimal (set sufficient)
-        Set<Long> vis = new HashSet<>();
-        vis.add(start.hashFull);
-        Queue<State> q = new PriorityQueue<>();
-        q.add(start);
-        // Initialize all moves and pushes from start
-        List<SMove> moves = new ArrayList<>(SMove.getActions());
-        List<SPush> pushes = new ArrayList<>(SPush.getActions());
+        LongHashMap vis = new LongHashMap();
+        vis.put(start.hashFull);
+        PriorityQueue<State> q = new PriorityQueue<>(List.of(start));
         // A*
         State curr = null;
         while (!q.isEmpty()) {
-            curr = q.poll();
+            curr = q.remove();
             searchedNodes++;
             // Guard clauses
             completed = curr.hashBox == completedHash;
             // Heuristic is admissible - first goal reach is optimal
             if (completed) break;
-            // Add possible pushes
-            for (SPush push : pushes) {
-                EDirection dir = push.getDirection();
-                int nextX = curr.playerX + dir.dX, nextY = curr.playerY + dir.dY, nextXY = nextX * dim + nextY;
-                // No box in push-direction
-                if (!curr.boxes.get(nextXY)) continue;
-                int nextXX = nextX + dir.dX, nextYY = nextY + dir.dY;
-                // Dead future box position
-                if (dsd.detectSimple(nextXX, nextYY)) continue;
-                int nextXXYY = nextXX * dim + nextYY;
-                // Future box position is not free (wall or box)
-                if (walls[nextXXYY] || curr.boxes.get(nextXXYY)) continue;
-                Long nextHashFull = curr.hashBox;
-                nextHashFull ^= zobrist_hashes[0][nextX][nextY];
-                nextHashFull ^= zobrist_hashes[0][nextXX][nextYY];
-                Long nextHashBox = nextHashFull;
-                nextHashFull ^= zobrist_hashes[1][nextX][nextY];
-                // Check if state visited
-                if (vis.contains(nextHashFull)) continue;
-                BitSet nextBoxes = (BitSet) curr.boxes.clone();
-                nextBoxes.clear(nextX * dim + nextY);
-                nextBoxes.set(nextXX * dim + nextYY);
-                // Check dynamic deadlock
-                if (dsd.detectFreeze(nextBoxes, nextXX, nextYY, nextHashBox)) continue;
-                State next = curr.copy(push, nextBoxes, nextHashBox, nextHashFull, nextX, nextY);
-                next.h = curr.h - minDists[nextXY] + minDists[nextXXYY];
-                vis.add(next.hashFull);
-                q.add(next);
-            }
-            // Add possible moves
-            for (SMove move : moves) {
-                EDirection dir = move.getDirection();
-                // Next move returns to previous state - backtracking
-                int nextX = curr.playerX + dir.dX, nextY = curr.playerY + dir.dY, nextXY = nextX * dim + nextY;
-                // Next square is not free (wall or box)
-                if (walls[nextXY] || curr.boxes.get(nextXY)) continue;
-                Long nextHashFull = curr.hashBox;
-                nextHashFull ^= zobrist_hashes[1][nextX][nextY];
-                // Check if state visited
-                if (vis.contains(nextHashFull)) continue;
-                // SMove -> boxes unchanged -> redundant deadlock detection, box cloning, and heuristic recalculation
-                State next = curr.copy(move, curr.boxes, curr.hashBox, nextHashFull, nextX, nextY);
-                vis.add(next.hashFull);
-                q.add(next);
+            for (int i = 0; i < 4; i++) {
+                EDirection dir = EDirection.forIndex(i);
+                int nextX = curr.playerX + dir.dX, nextY = curr.playerY + dir.dY;
+                // If there's a wall, skip direction
+                if (walls[nextX][nextY]) continue;
+                // If there's no box, we can move there
+                if (!boxAt(curr.boxes, nextX, nextY)) {
+                    Long nextHashFull = curr.hashBox;
+                    nextHashFull ^= zobrist_hashes[1][nextX][nextY];
+                    // Check if state visited
+                    if (vis.contains(nextHashFull)) continue;
+                    // SMove -> boxes unchanged -> redundant deadlock detection, box cloning, and heuristic recalculation
+                    State next = curr.copy(dir, curr.boxes, curr.hashBox, nextHashFull, nextX, nextY);
+                    vis.put(nextHashFull);
+                    q.add(next);
+                }
+                // Possible candidate for pushing there
+                else {
+                    int nextXX = nextX + dir.dX, nextYY = nextY + dir.dY;
+                    // Dead future box position
+                    if (dsd.detectSimple(nextXX, nextYY)) continue;
+                    // Future box position is not free (wall or box)
+                    if (walls[nextXX][nextYY] || boxAt(curr.boxes, nextXX, nextYY)) continue;
+                    // Update hashes separately for performance
+                    Long nextHashFull = curr.hashBox;
+                    nextHashFull ^= zobrist_hashes[0][nextX][nextY];
+                    nextHashFull ^= zobrist_hashes[0][nextXX][nextYY];
+                    Long nextHashBox = nextHashFull;
+                    nextHashFull ^= zobrist_hashes[1][nextX][nextY];
+                    // Check if state visited
+                    if (vis.contains(nextHashFull)) continue;
+                    // Copy and update boxes
+                    short[] nextBoxes = Arrays.copyOf(curr.boxes, board.boxCount);
+                    for (int ib = 0; ib < nextBoxes.length; ib++) {
+                        short b = nextBoxes[ib];
+                        if (nextX == (b & 0xFF) && nextY == ((b >> 8) & 0xFF)) {
+                            nextBoxes[ib] = (short) ((nextXX & 0xFF) | (nextYY & 0xFF) << 8);
+                            break;
+                        }
+                    }
+                    // Check dynamic deadlock
+                    if (dsd.detectFreeze(nextBoxes, nextXX, nextYY, nextHashBox)) continue;
+                    State next = curr.copy(dir, nextBoxes, nextHashBox, nextHashFull, nextX, nextY);
+                    // Update heuristic
+                    next.f = next.f - minDists[nextX][nextY] + minDists[nextXX][nextYY];
+                    vis.put(nextHashFull);
+                    q.add(next);
+                }
             }
         }
         // Backtracking to build action chain
@@ -150,28 +147,29 @@ public class MyAgent extends ArtificialAgent {
             actions.add(0, curr.pa);
             curr = curr.parent;
         }
-        // System.out.print(Arrays.stream(dsd.skipped).mapToObj(i -> i + " ").reduce("", String::concat));
-        // System.out.println(actions.stream().map(o -> o.toString().substring(0, 1)).collect(Collectors.joining()));
+        if (verbose) {
+            out.print(Arrays.stream(dsd.skipped).mapToObj(i -> i + " ").reduce("", String::concat));
+            out.println(actions.stream().map(o -> o.toString().substring(0, 1)).collect(Collectors.joining()));
+        }
         return actions;
     }
 
-    private void calculateMinDistTable(int fullDim) {
-        minDists = new int[fullDim];
-        Arrays.fill(minDists, Integer.MAX_VALUE);
+    private void calculateMinDistTable() {
+        minDists = new int[board.width()][board.height()];
+        for (int[] minDist : minDists) Arrays.fill(minDist, Integer.MAX_VALUE);
         for (Point g : goals) {
             int c = 0;
-            Queue<Integer> q = new ArrayDeque<>();
-            Set<Integer> vis = new HashSet<>();
-            q.add(g.x * dim + g.y);
+            Queue<Point> q = new ArrayDeque<>(List.of(g));
+            List<Integer> vis = new ArrayList<>(List.of(g.x * board.height() + g.y));
             while (true) {
-                Queue<Integer> qq = new ArrayDeque<>();
+                Queue<Point> qq = new ArrayDeque<>();
                 while (!q.isEmpty()) {
-                    int curr = q.remove();
-                    minDists[curr] = Math.min(minDists[curr], c);
+                    Point curr = q.remove();
+                    minDists[curr.x][curr.y] = Math.min(minDists[curr.x][curr.y], c);
                     for (int i = 0; i < 4; i++) {
-                        Integer next = curr + (dirs[i] * dim) + dirs[(i + 1) % 4];
-                        if (vis.contains(next) || walls[next]) continue;
-                        vis.add(next);
+                        Point next = new Point(curr.x + (dirs[i]), curr.y + dirs[(i + 1) % 4]);
+                        if (vis.contains(next.x * board.height() + next.y) || walls[next.x][next.y]) continue;
+                        vis.add(next.x * board.height() + next.y);
                         qq.add(next);
                     }
                 }
@@ -183,48 +181,37 @@ public class MyAgent extends ArtificialAgent {
     }
 
     static class State implements Comparable<State> {
-        BitSet boxes;
+        short[] boxes;
         State parent;
         EDirection pa;
-        int playerX, playerY, g, h;
+        int playerX, playerY, f;
         long hashBox, hashFull;
 
-        public State(BitSet boxes, State parent, EDirection pa, int g, int h, int playerX, int playerY) {
-            this(boxes, parent, pa, g, h, playerX, playerY, 0L, 0L);
-            boxes.stream().forEach(e -> this.hashBox ^= zobrist_hashes[0][e / dim][e % dim]);
+        public State(short[] boxes, State parent, EDirection pa, int f, int playerX, int playerY) {
+            this(boxes, parent, pa, f, playerX, playerY, 0L, 0L);
+            for (short b : boxes) this.hashBox ^= zobrist_hashes[0][b & 0xFF][(b >> 8) & 0xFF];
             this.hashFull = this.hashBox;
             this.hashFull ^= zobrist_hashes[1][playerX][playerY];
         }
 
-        public State(BitSet boxes, State parent, EDirection pa, int g, int h, int playerX, int playerY,
+        public State(short[] boxes, State parent, EDirection pa, int f, int playerX, int playerY,
                      Long hashBox, Long hashFull) {
             this.boxes = boxes;
             this.parent = parent;
             this.pa = pa;
-            this.g = g;
-            this.h = h;
+            this.f = f;
             this.playerX = playerX;
             this.playerY = playerY;
             this.hashBox = hashBox;
             this.hashFull = hashFull;
         }
 
-        public State copy(SAction pa, BitSet boxes, Long hashBox, Long hashFull, int px, int py) {
-            return new State(boxes, this, pa.getDirection(), g + 1, h, px, py, hashBox, hashFull);
+        public State copy(EDirection dir, short[] boxes, Long hashBox, Long hashFull, int px, int py) {
+            return new State(boxes, this, dir, f + 1, px, py, hashBox, hashFull);
         }
 
         public int compareTo(State o) {
-            return Float.compare(this.g + this.h, o.g + o.h);
-        }
-    }
-
-    // Point DAO
-    static public class Point {
-        int x, y;
-
-        public Point(int x, int y) {
-            this.x = x;
-            this.y = y;
+            return Integer.compare(this.f, o.f);
         }
     }
 
@@ -233,7 +220,7 @@ public class MyAgent extends ArtificialAgent {
         // Static dead square positions
         boolean[][] dead;
         // Skipped states counter for different deadlock types, and directions helper (used for flooding)
-        int[] skipped = new int[]{0, 0, 0};
+        int[] skipped = new int[]{0, 0};
         // Caches for freeze and corral deadlocks
         Map<Long, Boolean> freezeCache = new HashMap<>();
 
@@ -271,51 +258,57 @@ public class MyAgent extends ArtificialAgent {
         }
 
         // Detect freeze deadlocks (dynamic) - tiles from which a box cannot move, depends on other boxes
-        public boolean detectFreeze(BitSet boxes, int x, int y, Long hash) {
+        public boolean detectFreeze(short[] boxes, int x, int y, Long hash) {
             // Return cached config if possible
-            if (freezeCache.containsKey(hash)) return freezeCache.get(hash);
+            Boolean c = freezeCache.get(hash);
+            if (c != null) {
+                this.skipped[1]++;
+                return c;
+            }
             List<Integer> frozen = new ArrayList<>();
             // Get all frozen blocks in curr config
-            detectFreeze(boxes, x, y, frozen, new BitSet(board.width() * board.height()));
+            detectFreeze(boxes, x, y, frozen, new short[boxes.length], 0);
             // If any frozen block is not on goal -> dead state
-            boolean res = frozen.stream().anyMatch(b -> (STile.PLACE_FLAG & board.tiles[b / dim][b % dim]) == 0);
+            boolean res = frozen.stream().anyMatch(b ->
+                    (STile.PLACE_FLAG & board.tiles[b / board.height()][b % board.height()]) == 0);
             if (res) this.skipped[1]++;
             freezeCache.put(hash, res);
             return res;
         }
 
-        private boolean detectFreeze(BitSet boxes, int x, int y, List<Integer> f, BitSet bs) {
+        private boolean detectFreeze(short[] boxes, int x, int y, List<Integer> f, short[] bs, int ii) {
             // Check if frozen in x- and y-axis
             boolean[] frozen = new boolean[2];
             for (int i = 0; i < 2; i++) {
                 int dx = x + dirs[i], dy = y + dirs[i + 1], ddx = x + dirs[i + 2], ddy = y + dirs[(i + 3) % 4];
-                int dxy = dx * dim + dy, ddxy = ddx * dim + ddy;
                 // Check for an axis if there's 1 wall, or 2 dead states
-                frozen[i] = walls[dxy] || walls[ddxy] || bs.get(dxy) || bs.get(ddxy) ||
+                frozen[i] = walls[dx][dy] || walls[ddx][ddy] || boxAt(bs, dx, dy) || boxAt(bs, ddx, ddy) ||
                         (dead[dx][dy] && dead[ddx][ddy]);
             }
             // If frozen from both axes - short-circuit guard
             if (frozen[0] && frozen[1]) {
-                f.add(x * dim + y);
+                f.add(x * board.height() + y);
                 return true;
             }
             for (int i = 0; i < 2; i++)
                 if (frozen[i]) {
                     // Prevent circular check
-                    bs.set(x * dim + y);
-                    int dy = y + dirs[i], dx = x + dirs[i + 1], dxy = dx * dim + dy;
+                    bs[ii++] = (short) ((x & 0xFF) | (y & 0xFF) << 8);
+                    int dy = y + dirs[i], dx = x + dirs[i + 1];
                     // If box -> recursively check if next box is frozen
-                    if (boxes.get(dxy) && !bs.get(dxy)) frozen[1 - i] = detectFreeze(boxes, dx, dy, f, bs);
+                    if (boxAt(boxes, dx, dy) && !boxAt(bs, dx, dy))
+                        frozen[1 - i] = detectFreeze(boxes, dx, dy, f, bs, ii);
                     // Short-circuit guard
                     if (frozen[1 - i]) break;
-                    int ddy = y + dirs[i + 2], ddx = x + dirs[(i + 3) % 4], ddxy = ddx * dim + ddy;
-                    if (boxes.get(ddxy) && !bs.get(ddxy)) frozen[1 - i] = detectFreeze(boxes, ddx, ddy, f, bs);
+                    int ddy = y + dirs[i + 2], ddx = x + dirs[(i + 3) % 4];
+                    if (boxAt(boxes, ddx, ddy) && !boxAt(bs, ddx, ddy))
+                        frozen[1 - i] = detectFreeze(boxes, ddx, ddy, f, bs, ii);
                     // Short-circuit guard
                     if (frozen[1 - i]) break;
                 }
             // If frozen from both axes
             if (frozen[0] && frozen[1]) {
-                f.add(x * dim + y);
+                f.add(x * board.height() + y);
                 return true;
             }
             return false;
@@ -329,5 +322,75 @@ public class MyAgent extends ArtificialAgent {
             for (int j = 1; j < board.height() - 1; j++)
                 if ((flag & board.tiles[i][j]) != 0) res.add(new Point(i, j));
         return res;
+    }
+
+    private static boolean boxAt(short[] boxes, int x, int y) {
+        for (short b : boxes) if (x == (b & 0xFF) && y == ((b >> 8) & 0xFF)) return true;
+        return false;
+    }
+
+    static public class Point {
+        int x, y;
+
+        public Point(int x, int y) {
+            this.x = x;
+            this.y = y;
+        }
+    }
+
+    static class LongHashMap {
+        private static final int DEFAULT_CAPACITY = 2_000_000;
+        private static final double LOAD_FACTOR = 0.8;
+
+        private long[] keys;
+        private boolean[] occupied;
+        private int size;
+
+        public LongHashMap() {
+            keys = new long[DEFAULT_CAPACITY];
+            occupied = new boolean[DEFAULT_CAPACITY];
+            size = 0;
+        }
+
+        private int hash(long key) {
+            return (int) ((key >>> 32) % keys.length);
+        }
+
+        private void resize() {
+            int newCapacity = keys.length * 2;
+            long[] newKeys = new long[newCapacity];
+            boolean[] newOccupied = new boolean[newCapacity];
+            for (int i = 0; i < keys.length; i++) {
+                if (occupied[i]) {
+                    int index = hash(keys[i]);
+                    while (newOccupied[index]) index = (index + 1) % newCapacity;
+                    newKeys[index] = keys[i];
+                    newOccupied[index] = true;
+                }
+            }
+            keys = newKeys;
+            occupied = newOccupied;
+        }
+
+        public void put(long key) {
+            if ((double) size / keys.length >= LOAD_FACTOR) resize();
+            int index = hash(key);
+            while (occupied[index]) {
+                if (keys[index] == key) return;
+                index = (index + 1) % keys.length;
+            }
+            keys[index] = key;
+            occupied[index] = true;
+            size++;
+        }
+
+        public boolean contains(long key) {
+            int index = hash(key);
+            while (occupied[index]) {
+                if (keys[index] == key) return true;
+                index = (index + 1) % keys.length;
+            }
+            return false;
+        }
     }
 }
