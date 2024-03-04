@@ -12,12 +12,14 @@ public class AStar<S, A> {
         Queue<Node<S, A>> queue = new PriorityQueue<>();
         S start = prob.initialState();
 
+        int searchedNodes = 0;
         dist.put(start, 0.0);
         queue.add(new Node<>(start, 0, prob.estimate(start)));
         Node<S, A> curr = null;
 
         while (!queue.isEmpty()) {
             curr = queue.poll();
+            searchedNodes++;
             if (prob.isGoal(curr.state)) break;
             for (A action : prob.actions(curr.state)) {
                 // Extract new state from current action
@@ -25,7 +27,7 @@ public class AStar<S, A> {
                 // Calculate new cost
                 Double newCost = curr.g + prob.cost(curr.state, action);
                 // If new cost is larger than previous, skip iteration
-                if (newCost + curr.h >= dist.getOrDefault(next, Double.MAX_VALUE)) continue;
+                if (newCost >= dist.getOrDefault(next, Double.MAX_VALUE)) continue;
                 // Update dist entry
                 dist.put(next, newCost);
                 // Initialize new state
@@ -48,7 +50,8 @@ public class AStar<S, A> {
         }
         Collections.reverse(actions);
         // Print path
-        // System.out.println(actions.stream().map(Object::toString).collect(Collectors.joining()));
+        System.out.println(searchedNodes);
+        System.out.println(actions.stream().map(Object::toString).collect(Collectors.joining()));
         return new Solution<>(actions, goalState, pathCost);
     }
 
