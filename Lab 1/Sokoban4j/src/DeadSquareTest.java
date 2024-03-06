@@ -1,8 +1,7 @@
 import java.io.File;
 
+import game.board.compact.*;
 import game.board.oop.*;
-import game.board.slim.BoardSlim;
-import game.board.slim.STile;
 
 public class DeadSquareTest {
     static void printLevelWithTargets(Board board) {
@@ -10,6 +9,7 @@ public class DeadSquareTest {
             for (int x = 0; x < board.width; ++x) {
                 EPlace place = board.tiles[x][y].place;
                 ESpace space = board.tiles[x][y].space;
+
                 if (place == EPlace.BOX_1) {
                     System.out.print('.');
                 } else if (space != null) {
@@ -37,15 +37,15 @@ public class DeadSquareTest {
             printLevelWithTargets(board);
             System.out.println();
 
-            BoardSlim bs = board.makeBoardCompact().makeBoardSlim();
+            BoardCompact bc = board.makeBoardCompact();
 
-            MyAgent.board = bs;
-            MyAgent.DeadSquareDetector dsd = new MyAgent.DeadSquareDetector(bs);
+            MyAgent.DeadSquareDetector dsd = new MyAgent.DeadSquareDetector();
+            boolean[][] dead = dsd.detect(bc);
 
             System.out.println("dead squares: \n");
-            for (int y = 0; y < bs.height(); ++y) {
-                for (int x = 0; x < bs.width(); ++x)
-                    System.out.print((STile.WALL_FLAG & bs.tile(x, y)) != 0 ? '#' : (dsd.dead[x][y] ? 'X' : '_'));
+            for (int y = 0; y < bc.height(); ++y) {
+                for (int x = 0; x < bc.width(); ++x)
+                    System.out.print(CTile.isWall(bc.tile(x, y)) ? '#' : (dead[x][y] ? 'X' : '_'));
                 System.out.println();
             }
             System.out.println();
