@@ -35,7 +35,7 @@ public class MyAgent extends ArtificialAgent {
     // Composition with DeadSquareDetector
     private DeadSquareDetector dsd;
     // Zobrist hashes -> Random Long for each position used for state hashing
-    private static Long[][][] zobrist_hashes;
+    private static long[][][] zobrist_hashes;
 
     @Override
     protected List<EDirection> think(BoardCompact origBoard) {
@@ -44,7 +44,7 @@ public class MyAgent extends ArtificialAgent {
         goals = findEntities(board, STile.PLACE_FLAG);
         dsd = new DeadSquareDetector(board);
         // Initialize Zobrist hashtable, 0 -> boxes, 1 -> player
-        zobrist_hashes = new Long[2][board.width()][board.height()];
+        zobrist_hashes = new long[2][board.width()][board.height()];
         walls = new boolean[board.width()][board.height()];
         Random rand = new Random();
         for (int i = 0; i < board.width(); i++)
@@ -83,6 +83,7 @@ public class MyAgent extends ArtificialAgent {
         PriorityQueue<State> q = new PriorityQueue<>(List.of(start));
         // A*
         State curr = null;
+        EDirection[] dirList = {EDirection.UP, EDirection.RIGHT, EDirection.DOWN, EDirection.LEFT};
         while (!q.isEmpty()) {
             curr = q.remove();
             searchedNodes++;
@@ -91,13 +92,13 @@ public class MyAgent extends ArtificialAgent {
             // Heuristic is admissible - first goal reach is optimal
             if (completed) break;
             for (int i = 0; i < 4; i++) {
-                EDirection dir = EDirection.forIndex(i);
+                EDirection dir = dirList[i];
                 int nextX = curr.playerX + dir.dX, nextY = curr.playerY + dir.dY;
                 // If there's a wall, skip direction
                 if (walls[nextX][nextY]) continue;
                 // If there's no box, we can move there
                 if (!boxAt(curr.boxes, nextX, nextY)) {
-                    Long nextHashFull = curr.hashBox;
+                    long nextHashFull = curr.hashBox;
                     nextHashFull ^= zobrist_hashes[1][nextX][nextY];
                     // Check if state visited
                     if (vis.contains(nextHashFull)) continue;
@@ -109,15 +110,15 @@ public class MyAgent extends ArtificialAgent {
                 // Possible candidate for pushing there
                 else {
                     int nextXX = nextX + dir.dX, nextYY = nextY + dir.dY;
-                    // Dead future box position
-                    if (dsd.detectSimple(nextXX, nextYY)) continue;
                     // Future box position is not free (wall or box)
                     if (walls[nextXX][nextYY] || boxAt(curr.boxes, nextXX, nextYY)) continue;
+                    // Dead future box position
+                    if (dsd.detectSimple(nextXX, nextYY)) continue;
                     // Update hashes separately for performance
-                    Long nextHashFull = curr.hashBox;
+                    long nextHashFull = curr.hashBox;
                     nextHashFull ^= zobrist_hashes[0][nextX][nextY];
                     nextHashFull ^= zobrist_hashes[0][nextXX][nextYY];
-                    Long nextHashBox = nextHashFull;
+                    long nextHashBox = nextHashFull;
                     nextHashFull ^= zobrist_hashes[1][nextX][nextY];
                     // Check if state visited
                     if (vis.contains(nextHashFull)) continue;
@@ -195,7 +196,7 @@ public class MyAgent extends ArtificialAgent {
         }
 
         public State(short[] boxes, State parent, EDirection pa, int f, int playerX, int playerY,
-                     Long hashBox, Long hashFull) {
+                     long hashBox, long hashFull) {
             this.boxes = boxes;
             this.parent = parent;
             this.pa = pa;
@@ -206,7 +207,7 @@ public class MyAgent extends ArtificialAgent {
             this.hashFull = hashFull;
         }
 
-        public State copy(EDirection dir, short[] boxes, Long hashBox, Long hashFull, int px, int py) {
+        public State copy(EDirection dir, short[] boxes, long hashBox, long hashFull, int px, int py) {
             return new State(boxes, this, dir, f + 1, px, py, hashBox, hashFull);
         }
 
@@ -258,7 +259,7 @@ public class MyAgent extends ArtificialAgent {
         }
 
         // Detect freeze deadlocks (dynamic) - tiles from which a box cannot move, depends on other boxes
-        public boolean detectFreeze(short[] boxes, int x, int y, Long hash) {
+        public boolean detectFreeze(short[] boxes, int x, int y, long hash) {
             // Return cached config if possible
             Boolean c = freezeCache.get(hash);
             if (c != null) {
@@ -339,7 +340,7 @@ public class MyAgent extends ArtificialAgent {
     }
 
     static class LongHashMap {
-        private static final int DEFAULT_CAPACITY = 2_000_000;
+        private static final int DEFAULT_CAPACITY = 2_097_152;
         private static final double LOAD_FACTOR = 0.8;
 
         private long[] keys;
