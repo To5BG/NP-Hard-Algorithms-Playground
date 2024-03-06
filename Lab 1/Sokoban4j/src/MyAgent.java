@@ -225,8 +225,14 @@ public class MyAgent extends ArtificialAgent {
         // Caches for freeze and corral deadlocks
         Map<Long, Boolean> freezeCache = new HashMap<>();
 
+        public DeadSquareDetector() {}
+
         public DeadSquareDetector(BoardSlim board) {
             this.dead = this.detect(board);
+        }
+
+        public boolean[][] detect(BoardCompact board) {
+            return this.detect(board.makeBoardSlim());
         }
 
         // Detect simple deadlocks (static) - tiles from which a box cannot move, independent of other boxes
