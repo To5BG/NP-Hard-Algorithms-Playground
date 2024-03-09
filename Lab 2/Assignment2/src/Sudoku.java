@@ -83,7 +83,7 @@ public class Sudoku {
                 }, (params, var, idx, decision, domains) -> {
                     for (Map.Entry<String, BitSet[]> rowEntry : domains.entrySet()) {
                         BitSet curr = rowEntry.getValue()[idx];
-                        if (rowEntry.getKey().equals(var)) continue;
+                        if (curr == null) continue;
                         curr.clear(decision);
                         if (curr.isEmpty()) return true;
                     }
@@ -110,6 +110,7 @@ public class Sudoku {
                         if (row2 / n != rowIdx || row == row2) continue;
                         BitSet[] curr = domains.get("puzzle_" + row2);
                         for (int col = colIdx * n; col < (colIdx + 1) * n; col++) {
+                            if (curr[col] == null) continue;
                             curr[col].clear(decision);
                             if (curr[col].isEmpty()) return true;
                         }

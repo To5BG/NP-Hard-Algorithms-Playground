@@ -227,8 +227,20 @@ public class Solver<E> {
                 Map<String, BitSet[]> newDomain = domains.entrySet().stream()
                         .collect(Collectors.toMap(Map.Entry::getKey, v -> {
                             BitSet[] prev = v.getValue();
-                            BitSet[] res = new BitSet[prev.length];
-                            for (int j = 0; j < prev.length; j++) res[j] = (BitSet) prev[j].clone();
+                            BitSet[] res;
+                            if (v.getKey().equals(nextVar)) {
+                                res = new BitSet[prev.length];
+                                for (int j = 0; j < prev.length; j++) {
+                                    if (j == elIndex || prev[j] == null) res[j] = null; 
+                                    else res[j] = (BitSet) prev[j].clone();
+                                }
+                            } else {
+                                res = new BitSet[prev.length];
+                                for (int j = 0; j < prev.length; j++) {
+                                    if (prev[j] == null) res[j] = null; 
+                                    else res[j] = (BitSet) prev[j].clone();
+                                }
+                            }
                             return res;
                         }));
                 // If one of the domains becomes empty, then impossible to solve -> skip branch

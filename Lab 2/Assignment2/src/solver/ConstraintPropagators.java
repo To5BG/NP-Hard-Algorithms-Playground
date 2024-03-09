@@ -25,7 +25,7 @@ public class ConstraintPropagators {
             BitSet[] v = domains.get(var);
             // All-diff -> unset decision bit for all vars different from current one
             for (int i = 0; i < v.length; i++) {
-                if (i == idx) continue;
+                if (v[i] == null) continue;
                 v[i].clear(decision);
                 // Empty domain -> unsatisfiable
                 if (v[i].isEmpty()) return true;
@@ -39,10 +39,17 @@ public class ConstraintPropagators {
     decrease() {
         return (params, var, idx, decision, domains) -> {
             BitSet[] v = domains.get(var);
-            BitSet mask = new BitSet(v[0].size());
+            BitSet mask = null;
+            for (int i = 0; i < v.length; i++) {
+                if (v[i] == null) continue;
+                mask = new BitSet(v[i].size());
+                break; 
+            }
+            if (mask == null) { return false; }
             // Decrease -> unset all values below decision, non-inclusive, for variables before idx
             for (int mi = 0; mi < decision; mi++) mask.set(mi);
             for (int i = 0; i < idx; i++) {
+                if (v[i] == null) continue;
                 v[i].andNot(mask);
                 // Empty domain -> unsatisfiable
                 if (v[i].isEmpty()) return true;
@@ -51,6 +58,7 @@ public class ConstraintPropagators {
             mask.set(decision);
             // And all values above decision, for variables above idx
             for (int i = idx + 1; i < v.length; i++) {
+                if (v[i] == null) continue;
                 v[i].and(mask);
                 // Empty domain -> unsatisfiable
                 if (v[i].isEmpty()) return true;

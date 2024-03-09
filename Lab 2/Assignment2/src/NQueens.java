@@ -32,7 +32,7 @@ public class NQueens {
                 .addConstraint("q", (params, var, idx, decision, domains) -> {
                     BitSet[] v = domains.get(var);
                     for (int i = 0; i < v.length; i++) {
-                        if (idx == i) continue;
+                        if (v[i] == null) continue;
                         int removed = idx + decision - i;
                         if (removed < 0) break;
                         v[i].clear(removed);
@@ -44,7 +44,7 @@ public class NQueens {
                 .addConstraint("q", (params, var, idx, decision, domains) -> {
                     BitSet[] v = domains.get(var);
                     for (int i = 0; i < v.length; i++) {
-                        if (idx == i) continue;
+                        if (v[i] == null) continue;
                         int removed = decision - idx + i;
                         if (removed < 0) continue;
                         v[i].clear(removed);
