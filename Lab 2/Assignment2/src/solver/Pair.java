@@ -1,11 +1,11 @@
 package solver;
 
-// Generic Pair DAO
-public class Pair<L, R> {
-    L left;
-    R right;
+// Pair DAO for the variable binds
+public class Pair {
+    String left;
+    VariableBind right;
 
-    public Pair(L left, R right) {
+    public Pair(String left, VariableBind right) {
         this.left = left;
         this.right = right;
     }

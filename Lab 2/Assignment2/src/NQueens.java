@@ -30,7 +30,7 @@ public class NQueens {
                 // Constraints for diagonals
                 // Check that for no two queens q[i] + i == q[j] + j (or positive (/) diagonal)
                 .addConstraint("q", (params, var, idx, decision, domains) -> {
-                    BitSet[] v = domains.get(var);
+                    BitSet[] v = domains[var];
                     for (int i = 0; i < v.length; i++) {
                         if (v[i] == null) continue;
                         int removed = idx + decision - i;
@@ -42,7 +42,7 @@ public class NQueens {
                 })
                 // Check that for no two queens q[i] - i == q[j] - j (or negative (\) diagonal)
                 .addConstraint("q", (params, var, idx, decision, domains) -> {
-                    BitSet[] v = domains.get(var);
+                    BitSet[] v = domains[var];
                     for (int i = 0; i < v.length; i++) {
                         if (v[i] == null) continue;
                         int removed = decision - idx + i;

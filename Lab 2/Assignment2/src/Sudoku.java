@@ -81,8 +81,8 @@ public class Sudoku {
                                 if (v.get(row1)[col].equals(v.get(row2)[col])) return false;
                     return true;
                 }, (params, var, idx, decision, domains) -> {
-                    for (Map.Entry<String, BitSet[]> rowEntry : domains.entrySet()) {
-                        BitSet curr = rowEntry.getValue()[idx];
+                    for (BitSet[] rowEntry : domains) {
+                        BitSet curr = rowEntry[idx];
                         if (curr == null) continue;
                         curr.clear(decision);
                         if (curr.isEmpty()) return true;
@@ -102,15 +102,13 @@ public class Sudoku {
                         }
                     return true;
                 }, (params, var, idx, decision, domains) -> {
-                    String[] s = var.split("_");
-                    int row = Integer.parseInt(s[1]) * 10 + Integer.parseInt(s[2]);
-                    int n = (Integer) params.get("n");
+                    int row = var, n = (Integer) params.get("n");
                     // Find NxN region of decided variable
                     int rowIdx = row / n, colIdx = idx / n;
                     for (int row2 = 0; row2 < n * n; row2++) {
                         // Only update rows within same rowIdx (that are part of same section)
                         if (row2 / n != rowIdx || row == row2) continue;
-                        BitSet[] curr = domains.get("puzzle_" + row2 / 10 + "_" + row2 % 10);
+                        BitSet[] curr = domains[row2];
                         for (int col = colIdx * n; col < (colIdx + 1) * n; col++) {
                             if (curr[col] == null) continue;
                             curr[col].clear(decision);

@@ -4,8 +4,7 @@ import java.util.BitSet;
 import java.util.Map;
 
 public class ConstraintPropagators {
-    public static PentaFunction<Map<String, Object>, String, Integer, Integer, Map<String, BitSet[]>, Boolean>
-    get(String option, int arg) {
+    public static PentaFunction<Map<String, Object>, Integer, Integer, Integer, BitSet[][], Boolean> get(String option, int arg) {
         switch (option) {
             case "alldiff":
                 return alldiff(arg);
@@ -17,35 +16,35 @@ public class ConstraintPropagators {
     }
 
     // Implementation of alldiff global constraint; arg -> what value is allowed to repeat
-    static PentaFunction<Map<String, Object>, String, Integer, Integer, Map<String, BitSet[]>, Boolean>
-    alldiff(int arg) {
+    static PentaFunction<Map<String, Object>, Integer, Integer, Integer, BitSet[][], Boolean> alldiff(int arg) {
         return (params, var, idx, decision, domains) -> {
             // Allow for exception values
             if (decision.equals(arg)) return false;
-            BitSet[] v = domains.get(var);
+            BitSet[] v = domains[var];
             // All-diff -> unset decision bit for all vars different from current one
-            for (int i = 0; i < v.length; i++) {
-                if (v[i] == null) continue;
-                v[i].clear(decision);
+            for (BitSet bitSet : v) {
+                if (bitSet == null) continue;
+                bitSet.clear(decision);
                 // Empty domain -> unsatisfiable
-                if (v[i].isEmpty()) return true;
+                if (bitSet.isEmpty()) return true;
             }
             return false;
         };
     }
 
     // Implementation of decrease global constraint
-    static PentaFunction<Map<String, Object>, String, Integer, Integer, Map<String, BitSet[]>, Boolean>
-    decrease() {
+    static PentaFunction<Map<String, Object>, Integer, Integer, Integer, BitSet[][], Boolean> decrease() {
         return (params, var, idx, decision, domains) -> {
-            BitSet[] v = domains.get(var);
+            BitSet[] v = domains[var];
             BitSet mask = null;
-            for (int i = 0; i < v.length; i++) {
-                if (v[i] == null) continue;
-                mask = new BitSet(v[i].size());
-                break; 
+            for (BitSet bitSet : v) {
+                if (bitSet == null) continue;
+                mask = new BitSet(bitSet.size());
+                break;
             }
-            if (mask == null) { return false; }
+            if (mask == null) {
+                return false;
+            }
             // Decrease -> unset all values below decision, non-inclusive, for variables before idx
             for (int mi = 0; mi < decision; mi++) mask.set(mi);
             for (int i = 0; i < idx; i++) {
