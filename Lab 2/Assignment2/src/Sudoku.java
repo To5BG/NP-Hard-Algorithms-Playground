@@ -80,9 +80,9 @@ public class Sudoku {
                             for (int row2 = row1 + 1; row2 < v.size(); row2++)
                                 if (v.get(row1)[col].equals(v.get(row2)[col])) return false;
                     return true;
-                }, (params, var, idx, decision, domains) -> {
+                }, (_p, _v, elIdx, decision, domains) -> {
                     for (BitSet[] rowEntry : domains) {
-                        BitSet curr = rowEntry[idx];
+                        BitSet curr = rowEntry[elIdx];
                         if (curr == null) continue;
                         curr.clear(decision);
                         if (curr.isEmpty()) return true;
@@ -101,10 +101,10 @@ public class Sudoku {
                             if (section.stream().distinct().count() != section.size()) return false;
                         }
                     return true;
-                }, (params, var, idx, decision, domains) -> {
-                    int row = var, n = (Integer) params.get("n");
+                }, (params, varIdx, elIdx, decision, domains) -> {
+                    int row = varIdx, n = (Integer) params.get("n");
                     // Find NxN region of decided variable
-                    int rowIdx = row / n, colIdx = idx / n;
+                    int rowIdx = row / n, colIdx = elIdx / n;
                     for (int row2 = 0; row2 < n * n; row2++) {
                         // Only update rows within same rowIdx (that are part of same section)
                         if (row2 / n != rowIdx || row == row2) continue;

@@ -29,11 +29,11 @@ public class NQueens {
                 .addConstraint("q", "alldiff", -1)
                 // Constraints for diagonals
                 // Check that for no two queens q[i] + i == q[j] + j (or positive (/) diagonal)
-                .addConstraint("q", (params, var, idx, decision, domains) -> {
-                    BitSet[] v = domains[var];
+                .addConstraint("q", (_p, varIdx, elIdx, decision, domains) -> {
+                    BitSet[] v = domains[varIdx];
                     for (int i = 0; i < v.length; i++) {
                         if (v[i] == null) continue;
-                        int removed = idx + decision - i;
+                        int removed = elIdx + decision - i;
                         if (removed < 0) break;
                         v[i].clear(removed);
                         if (v[i].isEmpty()) return true;
@@ -41,11 +41,11 @@ public class NQueens {
                     return false;
                 })
                 // Check that for no two queens q[i] - i == q[j] - j (or negative (\) diagonal)
-                .addConstraint("q", (params, var, idx, decision, domains) -> {
-                    BitSet[] v = domains[var];
+                .addConstraint("q", (_p, varIdx, elIdx, decision, domains) -> {
+                    BitSet[] v = domains[varIdx];
                     for (int i = 0; i < v.length; i++) {
                         if (v[i] == null) continue;
-                        int removed = decision - idx + i;
+                        int removed = decision - elIdx + i;
                         if (removed < 0) continue;
                         v[i].clear(removed);
                         if (v[i].isEmpty()) return true;
@@ -56,13 +56,13 @@ public class NQueens {
                         // Checker function -> when branches can be skipped due to symmetry
                         // For this problem, simplest symmetry breaker is enforcing first row queen to be
                         // only on the first half -> Breaks x-axis mirrored solutions
-                        (params, var, idx, decision, domain) ->
-                                idx == 0 && decision > ((Integer) params.get("N") - 1) / 2,
+                        (params, _v, elIdx, decision, _d) ->
+                                elIdx == 0 && decision > ((Integer) params.get("N") - 1) / 2,
                         // Weight function -> determine how much should we count each individual symmetrical branch
                         // For this problem, it is always 2, except if on the middle column of an odd dimensional board
-                        (params, var, idx, decision, weight) -> {
+                        (params, _v, elIdx, decision, weight) -> {
                             int n = (Integer) params.get("N");
-                            return Math.min(weight, (idx == 0 && (n % 2 != 0) &&
+                            return Math.min(weight, (elIdx == 0 && (n % 2 != 0) &&
                                     (decision == (n - 1) / 2)) ? 1 : 2);
                         }, 2)
                 .solve(model, Problem.COUNT, m -> m, null);
