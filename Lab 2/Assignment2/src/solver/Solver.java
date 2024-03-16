@@ -3,7 +3,6 @@ package solver;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.BitSet;
-import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -18,8 +17,7 @@ import java.util.Random;
 public class Solver<E> {
     Map<String, Bind> parameterBinds = new HashMap<>(); // Binds a parameter name ({ value bind })
     Map<String, Object> parameters = new HashMap<>(); // Binds a parameter name to input values
-    List<Pair> variableBinds = new ArrayList<>(); // Binds a variable name ({ domain bind, size
-    // bind })
+    List<Pair> variableBinds = new ArrayList<>(); // Binds a variable name ({ domain bind, size bind })
     List<Variable> variables = new ArrayList<>(); // Binds a variable name to wrapper class
     List<Constraint> constraints = new ArrayList<>(); // List of constraints to apply
     Integer best; // Min/max score for MIN/MAX problems
@@ -47,14 +45,14 @@ public class Solver<E> {
         return this;
     }
 
-    public Solver<E> addConstraint(String var, PentaFunction<Map<String, Object>, Integer, Integer, Integer, BitSet[][], Boolean> pf) {
+    public Solver<E> addConstraint(String var, PentaFunction<BitSet[][], Boolean> pf) {
         constraints.add(new Constraint(var, pf));
         return this;
     }
 
     public Solver<E> addConstraint(List<String> par, List<String> var,
                                    BiFunction<List<Object>, List<Integer[]>, Boolean> constr,
-                                   PentaFunction<Map<String, Object>, Integer, Integer, Integer, BitSet[][], Boolean> pf) {
+                                   PentaFunction<BitSet[][], Boolean> pf) {
         constraints.add(new Constraint(par, var, constr, pf));
         return this;
     }
@@ -65,10 +63,8 @@ public class Solver<E> {
         return this;
     }
 
-    public Solver<E> addSymmetryBreaker(
-            PentaFunction<Map<String, Object>, Integer, Integer, Integer, List<Integer>, Boolean> checkSymmetry,
-            PentaFunction<Map<String, Object>, Integer, Integer, Integer, Integer, Integer> calculateCountWeight,
-            Integer initialWeight) {
+    public Solver<E> addSymmetryBreaker(PentaFunction<List<Integer>, Boolean> checkSymmetry,
+                                        PentaFunction<Integer, Integer> calculateCountWeight, Integer initialWeight) {
         sym = new SymmetryBreaker(checkSymmetry, calculateCountWeight, initialWeight);
         return this;
     }

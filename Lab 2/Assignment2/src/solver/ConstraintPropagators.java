@@ -1,10 +1,9 @@
 package solver;
 
 import java.util.BitSet;
-import java.util.Map;
 
 public class ConstraintPropagators {
-    public static PentaFunction<Map<String, Object>, Integer, Integer, Integer, BitSet[][], Boolean> get(String option, int arg) {
+    public static PentaFunction<BitSet[][], Boolean> get(String option, int arg) {
         switch (option) {
             case "alldiff":
                 return alldiff(arg);
@@ -16,8 +15,7 @@ public class ConstraintPropagators {
     }
 
     // Implementation of alldiff global constraint; arg -> what value is allowed to repeat
-    static PentaFunction<Map<String, Object>, Integer, Integer, Integer, BitSet[][], Boolean> alldiff(int arg) {
-        return (params, var, idx, decision, domains) -> {
+    static PentaFunction<BitSet[][], Boolean> alldiff(int arg) {
         return (_p, varIdx, _e, decision, domains) -> {
             // Allow for exception values
             if (decision.equals(arg)) return false;
@@ -34,9 +32,7 @@ public class ConstraintPropagators {
     }
 
     // Implementation of decrease global constraint
-    static PentaFunction<Map<String, Object>, Integer, Integer, Integer, BitSet[][], Boolean> decrease() {
-        return (params, var, idx, decision, domains) -> {
-            BitSet[] v = domains[var];
+    static PentaFunction<BitSet[][], Boolean> decrease() {
         return (_p, varIdx, elIdx, decision, domains) -> {
             BitSet[] v = domains[varIdx];
             BitSet mask = null;

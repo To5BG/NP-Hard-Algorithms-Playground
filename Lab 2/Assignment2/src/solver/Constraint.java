@@ -11,19 +11,19 @@ public class Constraint {
     List<String> parameterNames; // Parameter arguments
     List<String> variableNames; // Variable arguments
     BiFunction<List<Object>, List<Integer[]>, Boolean> constr; // (parameters, variable values) -> does it satisfy
-    PentaFunction<Map<String, Object>, Integer, Integer, Integer, BitSet[][], Boolean> propFunc;
-    // (parameters, variable, element index, decision, full domain) -> can you propagate
+    PentaFunction<BitSet[][], Boolean> propFunc;
+    // (parameters, var_idx, element_idx, decision, full domain) -> can you propagate
 
     public Constraint(List<String> parameterNames, List<String> variableNames,
                       BiFunction<List<Object>, List<Integer[]>, Boolean> constr,
-                      PentaFunction<Map<String, Object>, Integer, Integer, Integer, BitSet[][], Boolean> propFunc) {
+                      PentaFunction<BitSet[][], Boolean> propFunc) {
         this.parameterNames = parameterNames;
         this.variableNames = variableNames;
         this.constr = constr;
         this.propFunc = propFunc;
     }
 
-    public Constraint(String variable, PentaFunction<Map<String, Object>, Integer, Integer, Integer, BitSet[][], Boolean> pf) {
+    public Constraint(String variable, PentaFunction<BitSet[][], Boolean> pf) {
         this(List.of(), List.of(variable), null, pf);
     }
 

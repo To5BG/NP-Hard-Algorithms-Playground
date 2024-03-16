@@ -1,6 +1,8 @@
 package solver;
 
+import java.util.Map;
+
 @FunctionalInterface
-public interface PentaFunction<T, U, V, W, S, R> {
-    R apply(T t, U u, V v, W w, S s);
+public interface PentaFunction<E, R> {
+    R apply(Map<String, Object> params, Integer varIdx, Integer elIdx, Integer decision, E s);
 }
