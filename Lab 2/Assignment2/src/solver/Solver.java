@@ -19,8 +19,7 @@ public class Solver<E> {
     Map<String, Bind> parameterBinds = new HashMap<>(); // Binds a parameter name ({ value bind })
     Map<String, Object> parameters = new HashMap<>(); // Binds a parameter name to input values
     Map<String, VariableBind> variableBinds = new HashMap<>(); // Binds a variable name ({ domain bind, size bind })
-    Map<String, Variable> variables = new HashMap<>(); // Binds a variable name to wrapper class
-    List<String> variableNames = new ArrayList<>(); // Store variable names separate for optimization
+    List<Variable> variables = new ArrayList<>(); // Binds a variable name to wrapper class
     List<Constraint> constraints = new ArrayList<>(); // List of constraints to apply
     Integer best; // Min/max score for MIN/MAX problems
     Problem solType; // Type of problem to solve
@@ -28,7 +27,7 @@ public class Solver<E> {
     Function<Map<String, Integer[]>, E> transform; // Transform solved variables in desired form
     Function<E, Integer> eval; // Evaluate weight in case of MIN/MAX solve
     Integer[] decisions; // List of decisions to take
-    Pair[] index; // Maps decision to (variable, varIdx) pair
+    Triple[] index; // Maps decision to (variable, varIdx) pair
     SymmetryBreaker sym; // Bound symmetry breaker
     Boolean randomize = false, constrH = false; // Random decisions / most-constrained heuristic
 
@@ -98,10 +97,8 @@ public class Solver<E> {
             if (val instanceof Integer[]) v = (Integer[]) val;
             else v = new Integer[]{(Integer) val};
             total += v.length;
-            variables.put(e.getKey(), new Variable(dom, v));
-            variableNames.add(e.getKey());
+            variables.add(new Variable(e.getKey(), dom, v));
         }
-        Collections.sort(variableNames);
         return total;
     }
 
@@ -122,11 +119,13 @@ public class Solver<E> {
 
     // Helper for indexing variables (turn every combined index into (variable, varIdx) pair
     private void indexVariables() {
-        List<Pair> idxList = new ArrayList<>();
-        for (String var : this.variableNames)
-            for (int varIdx = 0; varIdx < this.variables.get(var).val.length; varIdx++)
-                idxList.add(new Pair(var, varIdx));
-        this.index = idxList.toArray(Pair[]::new);
+        List<Triple> idxList = new ArrayList<>();
+        for (int varIdx = 0; varIdx < variables.size(); varIdx++) {
+            Variable v = variables.get(varIdx);
+            for (int elIdx = 0; elIdx < v.val.length; elIdx++)
+                idxList.add(new Triple(v.name, varIdx, elIdx));
+        }
+        this.index = idxList.toArray(Triple[]::new);
     }
 
     // Public solve - load model and initialization
@@ -142,13 +141,12 @@ public class Solver<E> {
         this.eval = eval;
         this.best = (this.solType == Problem.MAX) ? Integer.MIN_VALUE : Integer.MAX_VALUE;
         // Map variable names to initial values
-        Map<String, Integer[]> vals = this.variables.entrySet().stream()
-                .collect(Collectors.toMap(Map.Entry::getKey, i -> i.getValue().val));
+        Map<String, Integer[]> vals = this.variables.stream().collect(Collectors.toMap(v -> v.name, v -> v.val));
         this.indexVariables();
         // Create decisions and preset arrays
-        List<Pair> preset = new ArrayList<>();
+        List<Triple> preset = new ArrayList<>();
         this.decisions = IntStream.range(0, total).filter(i -> {
-            Pair ind = index[i];
+            Triple ind = index[i];
             if (vals.get(ind.var)[ind.eid] == Integer.MIN_VALUE) return true;
             preset.add(ind);
             return false;
@@ -163,18 +161,16 @@ public class Solver<E> {
             }
         }
         // Map variable names to possible domains, for every single list element
-        Map<String, BitSet[]> domains = this.variables.entrySet().stream().collect(Collectors.toMap(Map.Entry::getKey,
-                e -> {
-                    Variable var = e.getValue();
+        Map<String, BitSet[]> domains = this.variables.stream().collect(Collectors.toMap(v -> v.name, v -> {
                     // Current variable domain represented as bitmask over full domain (stored in variable map)
-                    return IntStream.range(0, var.val.length).mapToObj(i -> {
-                        BitSet b = new BitSet(var.domain.size());
+                    return IntStream.range(0, v.val.length).mapToObj(i -> {
+                        BitSet b = new BitSet(v.domain.size());
                         b.flip(0, b.size());
                         return b;
                     }).toArray(BitSet[]::new);
                 }));
         // If some values pre-set, already attempt propagation over them
-        preset.forEach(p -> propagate(p.var, p.eid, variables.get(p.var).domain.indexOf(vals.get(p.var)[p.eid]),
+        preset.forEach(t -> propagate(t.var, t.eid, variables.get(t.varIdx).domain.indexOf(vals.get(t.var)[t.eid]),
                 domains));
         // Track solve time
         long time = System.currentTimeMillis();
@@ -207,11 +203,12 @@ public class Solver<E> {
             this.sol.count += weight;
         } else {
             // Find variable name and index within it for future use
-            Pair currPair = index[decisions[level]];
-            String nextVar = currPair.var;
-            Integer elIndex = currPair.eid;
+            Triple currTriple = index[decisions[level]];
+            String nextVar = currTriple.var;
+            Integer nextVarIdx = currTriple.varIdx;
+            Integer elIndex = currTriple.eid;
             BitSet currDomain = domains.get(nextVar)[elIndex];
-            Variable var = variables.get(nextVar);
+            Variable var = variables.get(nextVarIdx);
             // For each possible value in domain, build next state
             for (int i = 0; i < var.domain.size(); i++) {
                 // Early return if satisfy is solved
@@ -248,7 +245,7 @@ public class Solver<E> {
                 // Variable selection -> most-constrained-variable heuristic
                 if (constrH) Arrays.sort(this.decisions, level + 1, this.decisions.length,
                         Comparator.comparing(n -> {
-                            Pair curr = index[n];
+                            Triple curr = index[n];
                             return newDomain.get(curr.var)[curr.eid].cardinality();
                         }));
                 // Continue with next decisions

@@ -46,8 +46,8 @@ public class Sudoku {
         Map<String, Object> model = new HashMap<>();
         model.put("N", grid.length);
 
-        // Model board as N arrays of size N, i-th row called 'puzzle_i'
-        List<String> fullVar = IntStream.range(0, grid.length).mapToObj(i -> "puzzle_" + i)
+        // Model board as N arrays of size N, i-th row called 'puzzle_(i / 10)_(i % 10)'
+        List<String> fullVar = IntStream.range(0, grid.length).mapToObj(i -> "puzzle_" + i / 10 + "_" + i % 10)
                 .collect(Collectors.toList());
 
         Solver<int[][]> solver = new Solver<int[][]>()
@@ -58,7 +58,7 @@ public class Sudoku {
         // Apply the row-based constraints for each row separately
         for (int i = 0; i < grid.length; i++) {
             final int ii = i;
-            solver.addVariable("puzzle_" + i, new VariableBind(
+            solver.addVariable("puzzle_" + i / 10 + "_" + i % 10, new VariableBind(
                             List.of("N"), j -> IntStream.rangeClosed(1, (Integer) j.get(0))
                             .boxed().collect(Collectors.toList()),
                             List.of("N"), j -> {
@@ -70,7 +70,7 @@ public class Sudoku {
                         return v;
                     }))
                     // Sudoku rule #1: All numbers in a row are different
-                    .addConstraint("puzzle_" + i, "alldiff", -1);
+                    .addConstraint("puzzle_" + i / 10 + "_" + i % 10, "alldiff", -1);
         }
 
         // Sudoku rule #2: All numbers in a column are different
@@ -102,13 +102,15 @@ public class Sudoku {
                         }
                     return true;
                 }, (params, var, idx, decision, domains) -> {
-                    int row = Integer.parseInt(var.substring(7)), n = (Integer) params.get("n");
+                    String[] s = var.split("_");
+                    int row = Integer.parseInt(s[1]) * 10 + Integer.parseInt(s[2]);
+                    int n = (Integer) params.get("n");
                     // Find NxN region of decided variable
                     int rowIdx = row / n, colIdx = idx / n;
                     for (int row2 = 0; row2 < n * n; row2++) {
                         // Only update rows within same rowIdx (that are part of same section)
                         if (row2 / n != rowIdx || row == row2) continue;
-                        BitSet[] curr = domains.get("puzzle_" + row2);
+                        BitSet[] curr = domains.get("puzzle_" + row2 / 10 + "_" + row2 % 10);
                         for (int col = colIdx * n; col < (colIdx + 1) * n; col++) {
                             if (curr[col] == null) continue;
                             curr[col].clear(decision);
@@ -120,8 +122,8 @@ public class Sudoku {
 
         CSolution<int[][]> res = solver.solve(model, Problem.SATISFY, m ->
                 IntStream.range(0, grid.length).mapToObj(i ->
-                        Arrays.stream(Arrays.copyOf(m.get("puzzle_" + i), grid.length)).mapToInt(Integer::intValue)
-                                .toArray()).toArray(int[][]::new), null);
+                        Arrays.stream(Arrays.copyOf(m.get("puzzle_" + i / 10 + "_" + i % 10), grid.length))
+                                .mapToInt(Integer::intValue).toArray()).toArray(int[][]::new), null);
 
         System.out.println(res.count);
         int[][] ss = res.solutions.get(0);

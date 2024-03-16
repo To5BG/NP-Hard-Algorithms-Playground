@@ -1,12 +1,12 @@
 package solver;
 
-// Pair DAO - used to map decision to (var, element) pair
-public class Pair {
-    String var; // Variable name
-    Integer eid; // Element index (index within this variable)
+// Generic Pair DAO
+public class Pair<L, R> {
+    L left;
+    R right;
 
-    public Pair(String var, Integer r) {
-        this.var = var;
-        this.eid = r;
+    public Pair(L left, R right) {
+        this.left = left;
+        this.right = right;
     }
 }
