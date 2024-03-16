@@ -58,7 +58,8 @@ public class Sudoku {
         // Apply the row-based constraints for each row separately
         for (int i = 0; i < grid.length; i++) {
             final int ii = i;
-            solver.addVariable("puzzle_" + i / 10 + "_" + i % 10, new VariableBind(
+            String name = "puzzle_" + i / 10 + "_" + i % 10;
+            solver.addVariable(name, new VariableBind(
                             List.of("N"), j -> IntStream.rangeClosed(1, (Integer) j.get(0))
                             .boxed().collect(Collectors.toList()),
                             List.of("N"), j -> {
@@ -70,7 +71,7 @@ public class Sudoku {
                         return v;
                     }))
                     // Sudoku rule #1: All numbers in a row are different
-                    .addConstraint("puzzle_" + i / 10 + "_" + i % 10, "alldiff", -1);
+                    .addConstraint(name, "alldiff", -1);
         }
 
         // Sudoku rule #2: All numbers in a column are different
